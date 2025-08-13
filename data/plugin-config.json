@@ -1,0 +1,6 @@
+{
+  "apiKey": "lta-plugin-key-px2ykqli7",
+  "webhookUrl": "https://wp2.ltacv.com/api",
+  "autoSync": true,
+  "syncDirection": "bidirectional"
+}

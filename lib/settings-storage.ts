@@ -1,0 +1,196 @@
+import fs from 'fs'
+import path from 'path'
+import { encryptSensitiveData, decryptSensitiveData, sanitizeForLog } from './security'
+
+const SETTINGS_FILE = path.join(process.cwd(), 'data', 'settings.json')
+
+// Đảm bảo thư mục data tồn tại
+const ensureDataDir = () => {
+  const dataDir = path.dirname(SETTINGS_FILE)
+  if (!fs.existsSync(dataDir)) {
+    fs.mkdirSync(dataDir, { recursive: true })
+  }
+}
+
+// Default settings
+const defaultSettings = {
+  // General Settings
+  siteName: 'LTA - Logistics Technology Application',
+  siteDescription: 'Ứng dụng công nghệ logistics hàng đầu Việt Nam',
+  siteUrl: 'https://lta.com.vn',
+  maintenanceMode: false,
+  
+  // Email Settings
+  smtpHost: 'smtp.gmail.com',
+  smtpPort: '587',
+  smtpUser: 'noreply@lta.com.vn',
+  smtpPass: '',
+  
+  // Security Settings
+  twoFactorAuth: false,
+  sessionTimeout: 30,
+  passwordPolicy: true,
+  loginAttempts: 5,
+  maxPasswordAge: 90,
+  requireSpecialChars: true,
+  lockoutDuration: 15,
+  enableAuditLog: true,
+  ipWhitelist: '',
+  sessionConcurrency: 1,
+  
+  // Notification Settings
+  emailNotifications: true,
+  pushNotifications: false,
+  newsAlerts: true,
+  systemAlerts: true,
+  
+  // WordPress Settings
+  wordpressSiteUrl: 'https://wp2.ltacv.com',
+  wordpressUsername: '',
+  wordpressApplicationPassword: '',
+  wordpressAutoPublish: false,
+  wordpressDefaultCategory: '',
+  wordpressDefaultTags: [],
+  wordpressFeaturedImageEnabled: true,
+  wordpressExcerptLength: 150,
+  wordpressStatus: 'draft' as 'draft' | 'publish' | 'private',
+  
+  // Metadata
+  lastUpdated: new Date().toISOString(),
+  updatedBy: 'admin'
+}
+
+export interface SystemSettings {
+  // General Settings
+  siteName: string
+  siteDescription: string
+  siteUrl: string
+  maintenanceMode: boolean
+  
+  // Email Settings
+  smtpHost: string
+  smtpPort: string
+  smtpUser: string
+  smtpPass: string
+  
+  // Security Settings
+  twoFactorAuth: boolean
+  sessionTimeout: number
+  passwordPolicy: boolean
+  loginAttempts: number
+  maxPasswordAge: number
+  requireSpecialChars: boolean
+  lockoutDuration: number
+  enableAuditLog: boolean
+  ipWhitelist: string
+  sessionConcurrency: number
+  
+  // Notification Settings
+  emailNotifications: boolean
+  pushNotifications: boolean
+  newsAlerts: boolean
+  systemAlerts: boolean
+  
+  // WordPress Settings
+  wordpressSiteUrl: string
+  wordpressUsername: string
+  wordpressApplicationPassword: string
+  wordpressAutoPublish: boolean
+  wordpressDefaultCategory: string
+  wordpressDefaultTags: string[]
+  wordpressFeaturedImageEnabled: boolean
+  wordpressExcerptLength: number
+  wordpressStatus: 'draft' | 'publish' | 'private'
+  
+  // Metadata
+  lastUpdated: string
+  updatedBy: string
+}
+
+// Load settings from file
+export const loadSettings = (): SystemSettings => {
+  try {
+    ensureDataDir()
+    
+    if (!fs.existsSync(SETTINGS_FILE)) {
+      // Create default settings file
+      fs.writeFileSync(SETTINGS_FILE, JSON.stringify(defaultSettings, null, 2))
+      return defaultSettings
+    }
+    
+    const data = fs.readFileSync(SETTINGS_FILE, 'utf8')
+    const settings = JSON.parse(data)
+    
+    // Decrypt sensitive data
+    const decryptedSettings = {
+      ...settings,
+      smtpUser: settings.smtpUser?.startsWith('ENCRYPTED:') ? 
+        decryptSensitiveData(settings.smtpUser.replace('ENCRYPTED:', '')) : settings.smtpUser,
+      smtpPass: settings.smtpPass?.startsWith('ENCRYPTED:') ? 
+        decryptSensitiveData(settings.smtpPass.replace('ENCRYPTED:', '')) : settings.smtpPass,
+      wordpressUsername: settings.wordpressUsername?.startsWith('ENCRYPTED:') ? 
+        decryptSensitiveData(settings.wordpressUsername.replace('ENCRYPTED:', '')) : settings.wordpressUsername,
+      wordpressApplicationPassword: settings.wordpressApplicationPassword?.startsWith('ENCRYPTED:') ? 
+        decryptSensitiveData(settings.wordpressApplicationPassword.replace('ENCRYPTED:', '')) : settings.wordpressApplicationPassword,
+    }
+    
+    console.log('Settings loaded:', sanitizeForLog(decryptedSettings))
+    return decryptedSettings
+    
+    // Merge with defaults to ensure all fields exist
+    return { ...defaultSettings, ...settings }
+  } catch (error) {
+    console.error('Error loading settings:', error)
+    return defaultSettings
+  }
+}
+
+// Save settings to file
+export const saveSettings = (settings: SystemSettings): void => {
+  try {
+    ensureDataDir()
+    
+    // Encrypt sensitive data before saving
+    const encryptedSettings = {
+      ...settings,
+      smtpUser: settings.smtpUser ? `ENCRYPTED:${encryptSensitiveData(settings.smtpUser)}` : '',
+      smtpPass: settings.smtpPass ? `ENCRYPTED:${encryptSensitiveData(settings.smtpPass)}` : '',
+      wordpressUsername: settings.wordpressUsername ? `ENCRYPTED:${encryptSensitiveData(settings.wordpressUsername)}` : '',
+      wordpressApplicationPassword: settings.wordpressApplicationPassword ? `ENCRYPTED:${encryptSensitiveData(settings.wordpressApplicationPassword)}` : '',
+      lastUpdated: new Date().toISOString(),
+      updatedBy: 'admin'
+    }
+    
+    fs.writeFileSync(SETTINGS_FILE, JSON.stringify(encryptedSettings, null, 2))
+    console.log('Settings saved successfully to:', SETTINGS_FILE)
+  } catch (error) {
+    console.error('Error saving settings:', error)
+    throw error
+  }
+}
+
+// Update a specific setting
+export const updateSetting = (key: keyof SystemSettings, value: any): SystemSettings => {
+  const currentSettings = loadSettings()
+  const updatedSettings = {
+    ...currentSettings,
+    [key]: value,
+    lastUpdated: new Date().toISOString(),
+    updatedBy: 'admin'
+  }
+  
+  saveSettings(updatedSettings)
+  return updatedSettings
+}
+
+// Reset settings to defaults
+export const resetSettings = (): SystemSettings => {
+  const resetSettings = {
+    ...defaultSettings,
+    lastUpdated: new Date().toISOString(),
+    updatedBy: 'admin'
+  }
+  
+  saveSettings(resetSettings)
+  return resetSettings
+} 
