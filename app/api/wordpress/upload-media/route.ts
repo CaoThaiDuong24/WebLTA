@@ -32,8 +32,8 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Kiểm tra kích thước file (giới hạn 10MB)
-    const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+    // Kiểm tra kích thước file (giới hạn 50MB)
+    const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
 
     console.log('🔍 WordPress config found:', {
       siteUrl: wordpressConfig.siteUrl,

@@ -35,6 +35,7 @@ import {
   fileToDataUrl,
   processImageIfNeeded
 } from '@/lib/image-utils'
+import { fileToDataUrlWithCompression, validateFile } from '@/lib/upload-utils'
 import { QuillEditor } from '@/components/ui/quill-editor'
 
 // Schema validation
@@ -164,11 +165,33 @@ export default function CreateNewsPage() {
     if (file) {
       try {
         setUploadingImages(true)
-        const dataUrl = await fileToDataUrl(file)
+        
+        // Kiểm tra file trước khi xử lý
+        const validation = validateFile(file)
+        if (!validation.isValid) {
+          toast({
+            title: "❌ Lỗi",
+            description: validation.error || "File không hợp lệ",
+            variant: "destructive",
+          })
+          return
+        }
+        
+        // Hiển thị cảnh báo nếu file lớn
+        if (validation.warning) {
+          toast({
+            title: "⚠️ Cảnh báo",
+            description: validation.warning,
+            variant: "default",
+          })
+        }
+        
+        // Sử dụng function mới với nén tự động
+        const dataUrl = await fileToDataUrlWithCompression(file)
         setValue('featuredImage', dataUrl)
         setFeaturedImage(file)
         setFeaturedImagePreview(dataUrl)
-        console.log('✅ Featured image processed')
+        console.log('✅ Featured image processed with compression')
       } catch (error) {
         console.error('Error processing featured image:', error)
         toast({
@@ -187,13 +210,49 @@ export default function CreateNewsPage() {
     if (files.length > 0) {
       try {
         setUploadingImages(true)
+        
+        // Kiểm tra từng file
+        const validFiles: File[] = []
+        const warnings: string[] = []
+        
+        for (const file of files) {
+          const validation = validateFile(file)
+          if (validation.isValid) {
+            validFiles.push(file)
+            if (validation.warning) {
+              warnings.push(`${file.name}: ${validation.warning}`)
+            }
+          } else {
+            toast({
+              title: "❌ Lỗi",
+              description: `${file.name}: ${validation.error}`,
+              variant: "destructive",
+            })
+          }
+        }
+        
+        if (validFiles.length === 0) {
+          setUploadingImages(false)
+          return
+        }
+        
+        // Hiển thị cảnh báo nếu có
+        if (warnings.length > 0) {
+          toast({
+            title: "⚠️ Cảnh báo",
+            description: warnings.slice(0, 2).join(', ') + (warnings.length > 2 ? '...' : ''),
+            variant: "default",
+          })
+        }
+        
+        // Xử lý các file hợp lệ với nén tự động
         const dataUrls = await Promise.all(
-          files.map(file => fileToDataUrl(file))
+          validFiles.map(file => fileToDataUrlWithCompression(file))
         )
         setValue('additionalImages', dataUrls)
-        setAdditionalImages(files)
+        setAdditionalImages(validFiles)
         setAdditionalImagesPreview(dataUrls)
-        console.log('✅ Additional images processed')
+        console.log(`✅ ${validFiles.length} additional images processed with compression`)
       } catch (error) {
         console.error('Error processing additional images:', error)
         toast({

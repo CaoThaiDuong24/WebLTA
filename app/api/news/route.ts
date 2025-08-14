@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import fs from 'fs'
 import path from 'path'
 import { WordPressAPI } from '@/lib/wordpress'
+import { sanitizeHtmlContent, validateHtmlContent } from '@/lib/html-content-utils'
 
 // Định nghĩa interface cho tin tức
 interface NewsItem {
@@ -192,7 +193,7 @@ export async function POST(request: NextRequest) {
     console.log(`✅ Generated slug: ${slug}`)
 
     // Validate và xử lý hình ảnh
-    const MAX_IMAGE_SIZE = 10 * 1024 * 1024; // 10MB cho data URL
+    const MAX_IMAGE_SIZE = 50 * 1024 * 1024; // 50MB cho data URL
     
     // Kiểm tra featuredImage
     let featuredImage = body.featuredImage || '';
@@ -223,6 +224,37 @@ export async function POST(request: NextRequest) {
         return img && img.trim() !== '';
       });
     }
+
+    // Xử lý và làm sạch nội dung HTML
+    let content = body.content || '';
+    let excerpt = body.excerpt || '';
+    
+    if (content && typeof content === 'string') {
+      const originalContent = content;
+      content = sanitizeHtmlContent(content);
+      
+      // Kiểm tra nội dung sau khi làm sạch
+      const validation = validateHtmlContent(content);
+      if (!validation.isValid) {
+        console.log('⚠️ Content validation issues:', validation.errors);
+      }
+      if (validation.warnings.length > 0) {
+        console.log('⚠️ Content validation warnings:', validation.warnings);
+      }
+      
+      if (content !== originalContent) {
+        console.log('✅ Content sanitized');
+      }
+    }
+    
+    if (excerpt && typeof excerpt === 'string') {
+      const originalExcerpt = excerpt;
+      excerpt = sanitizeHtmlContent(excerpt);
+      
+      if (excerpt !== originalExcerpt) {
+        console.log('✅ Excerpt sanitized');
+      }
+    }
     
     // Đảm bảo featuredImage và image có giá trị nếu có additionalImages
     if (additionalImages.length > 0 && !featuredImage && !image) {
@@ -243,8 +275,8 @@ export async function POST(request: NextRequest) {
       id: generateId(),
       title: body.title,
       slug: body.slug,
-      excerpt: body.excerpt,
-      content: body.content,
+      excerpt: excerpt,
+      content: content,
       status: body.status || 'draft',
       featured: body.featured || false,
       metaTitle: body.metaTitle,

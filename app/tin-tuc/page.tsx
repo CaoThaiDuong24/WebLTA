@@ -24,7 +24,7 @@ function NewsPageContent() {
   const [categories, setCategories] = useState<string[]>([])
   const [selectedCategory, setSelectedCategory] = useState<string>("")
   const [currentPage, setCurrentPage] = useState(1)
-  const [itemsPerPage] = useState(6)
+  const [itemsPerPage] = useState(4)
   const { t } = useTranslation()
 
   // Load tin tức từ API
@@ -138,7 +138,7 @@ function NewsPageContent() {
           </div>
         </section>
 
-        <div className="container py-12 max-w-6xl">
+        <div className="container py-12 mx-auto" style={{ maxWidth: '1200px' }}>
           {/* Featured News */}
           {featuredNews && news.length > 0 && (
             <div className="bg-gradient-to-br from-[#4CAF50]/3 to-[#4CAF50]/8 rounded-xl p-6 mb-12 border border-[#4CAF50]/10">
@@ -147,7 +147,7 @@ function NewsPageContent() {
               </div>
               <div className="grid lg:grid-cols-2 gap-8">
                 <div className="flex flex-col justify-center">
-                  <h2 className="text-xl lg:text-2xl font-semibold text-gray-900 hover:text-[#4CAF50] transition-colors duration-300 leading-tight mb-4">
+                  <h2 className="text-xl lg:text-2xl font-semibold text-gray-900 hover:text-[#4CAF50] transition-colors duration-300 leading-tight mb-4 line-clamp-3">
                     {featuredNews.title}
                   </h2>
 
@@ -177,7 +177,7 @@ function NewsPageContent() {
                 </div>
                 
                 <div className="flex items-center justify-center">
-                  <div className="relative h-64 w-full overflow-hidden rounded-xl shadow-lg">
+                  <div className="relative w-full overflow-hidden rounded-xl shadow-lg" style={{ height: 'calc(16rem * 1.2)' }}>
                     <Image
                       src={getMainImageUrl(featuredNews)}
                       alt={getImageAlt(featuredNews)}
@@ -280,7 +280,7 @@ function NewsPageContent() {
               )}
 
               {/* Pagination */}
-              {totalPages > 1 && (
+              {filteredNews.length > 0 && (
                 <div className="flex justify-center mt-8">
                   <div className="flex items-center space-x-2">
                     {/* Previous button */}
@@ -502,7 +502,7 @@ function NewsPageContent() {
 
       {/* Contact Us Section */}
       <section id="contact" className="bg-white py-16">
-        <div className="container max-w-6xl">
+        <div className="container mx-auto" style={{ maxWidth: '1200px' }}>
           <div className="mx-auto max-w-2xl text-center mb-12">
             <h2 className="text-3xl font-bold tracking-tight text-gray-900 sm:text-4xl">{t('contactUs')}</h2>
             <p className="mt-4 text-lg leading-8 text-gray-600">
@@ -779,7 +779,7 @@ export default function NewsPage() {
       <div className="flex min-h-screen flex-col public-page">
         <Header />
         <main className="flex-1">
-          <div className="container py-12 max-w-6xl">
+          <div className="container py-12 mx-auto" style={{ maxWidth: '1200px' }}>
             <div className="animate-pulse">
               <div className="h-8 bg-gray-200 rounded mb-4"></div>
               <div className="h-4 bg-gray-200 rounded mb-8"></div>

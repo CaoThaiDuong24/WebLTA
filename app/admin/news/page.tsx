@@ -37,6 +37,8 @@ export default function NewsManagementPage() {
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [restoringId, setRestoringId] = useState<string | null>(null)
   const [togglingId, setTogglingId] = useState<string | null>(null)
+  const [currentPage, setCurrentPage] = useState(1)
+  const [itemsPerPage] = useState(5)
 
   // Auto reload when component mounts
   useEffect(() => {
@@ -226,6 +228,21 @@ export default function NewsManagementPage() {
     }
   }
 
+  // Pagination logic
+  const totalPages = Math.ceil(news.length / itemsPerPage)
+  const startIndex = (currentPage - 1) * itemsPerPage
+  const endIndex = startIndex + itemsPerPage
+  const currentNews = news.slice(startIndex, endIndex)
+
+  const handlePageChange = (page: number) => {
+    setCurrentPage(page)
+    // Scroll to top of news list
+    window.scrollTo({
+      top: 0,
+      behavior: 'smooth'
+    })
+  }
+
   return (
     <div className="space-y-6">
       {/* WordPress Sync Alert */}
@@ -256,7 +273,7 @@ export default function NewsManagementPage() {
             <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
             <span className="ml-2">Làm mới</span>
           </Button>
-                    <Button
+          <Button
             variant="outline"
             onClick={syncAllMissingFromWordPress}
             disabled={restoringId === 'all'}
@@ -365,7 +382,7 @@ export default function NewsManagementPage() {
         </Card>
       ) : (
         <div className="space-y-4">
-          {news.map((item) => (
+          {currentNews.map((item) => (
             <Card key={item.id}>
               <CardContent className="p-6">
                 <div className="flex items-start space-x-4">
@@ -423,6 +440,67 @@ export default function NewsManagementPage() {
               </CardContent>
             </Card>
           ))}
+        </div>
+      )}
+
+      {/* Pagination */}
+      {totalPages > 1 && (
+        <div className="flex justify-center mt-8">
+          <div className="flex items-center space-x-2">
+            {/* Previous button */}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => handlePageChange(currentPage - 1)}
+              disabled={currentPage === 1}
+              className="flex items-center"
+            >
+              <svg className="h-4 w-4 rotate-180 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              </svg>
+              Trước
+            </Button>
+
+            {/* Page numbers */}
+            <div className="flex items-center space-x-1">
+              {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
+                <Button
+                  key={page}
+                  variant={currentPage === page ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => handlePageChange(page)}
+                  className={`w-10 h-10 ${
+                    currentPage === page 
+                      ? 'bg-primary hover:bg-primary/90 text-primary-foreground' 
+                      : 'hover:bg-muted'
+                  }`}
+                >
+                  {page}
+                </Button>
+              ))}
+            </div>
+
+            {/* Next button */}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => handlePageChange(currentPage + 1)}
+              disabled={currentPage === totalPages}
+              className="flex items-center"
+            >
+              Sau
+              <svg className="h-4 w-4 ml-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              </svg>
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* Page info */}
+      {news.length > 0 && (
+        <div className="text-center mt-4 text-sm text-muted-foreground">
+          Hiển thị {startIndex + 1}-{Math.min(endIndex, news.length)} trong tổng số {news.length} tin tức
         </div>
       )}
     </div>

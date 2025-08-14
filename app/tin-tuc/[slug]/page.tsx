@@ -10,6 +10,7 @@ import { useParams, useRouter } from "next/navigation"
 import { useState, useEffect } from "react"
 import { useTranslation } from "@/hooks/use-translation"
 import { getMainImageUrl, getImageAlt, hasImage, NewsItem, getAllImages } from '@/lib/image-utils'
+import { SimpleHtmlContent } from '@/components/ui/simple-html-content'
 
 // Using NewsItem from lib/image-utils instead of local interface
 
@@ -139,9 +140,9 @@ export default function NewsDetailPage() {
     return (
       <div className="flex min-h-screen flex-col public-page">
         <Header />
-        <main className="flex-1">
-          <div className="container py-12 max-w-4xl">
-            <div className="animate-pulse">
+              <main className="flex-1">
+        <div className="container py-12 mx-auto" style={{ maxWidth: '1200px' }}>
+          <div className="animate-pulse">
               <div className="h-8 bg-gray-200 rounded mb-4"></div>
               <div className="h-4 bg-gray-200 rounded mb-8"></div>
               <div className="h-96 bg-gray-200 rounded mb-8"></div>
@@ -164,7 +165,7 @@ export default function NewsDetailPage() {
       <div className="flex min-h-screen flex-col public-page">
         <Header />
         <main className="flex-1">
-          <div className="container py-12 max-w-4xl">
+          <div className="container py-12 mx-auto" style={{ maxWidth: '1200px' }}>
             <div className="text-center">
               <h1 className="text-2xl font-bold text-gray-900 mb-4">Không tìm thấy tin tức</h1>
               <p className="text-gray-600 mb-8">{error || 'Tin tức không tồn tại hoặc đã bị xóa'}</p>
@@ -187,7 +188,7 @@ export default function NewsDetailPage() {
       <Header />
 
       <main className="flex-1">
-        <div className="container py-12 max-w-4xl">
+        <div className="container py-12 mx-auto" style={{ maxWidth: '1200px' }}>
           {/* Breadcrumb */}
           <nav className="mb-8">
             <ol className="flex items-center space-x-2 text-sm text-gray-500">
@@ -233,7 +234,8 @@ export default function NewsDetailPage() {
               {/* Featured Image */}
               {hasImage(news) && (
                 <div 
-                  className="relative h-96 w-full overflow-hidden rounded-lg mb-8 cursor-pointer group"
+                  className="relative w-full overflow-hidden rounded-lg mb-8 cursor-pointer group"
+                  style={{ height: 'calc(24rem * 1.3 * 1.2 * 1.1)' }}
                   onClick={() => {
                     const allImages = getAllImages(news)
                     const mainImageIndex = allImages.findIndex(img => img === getMainImageUrl(news))
@@ -264,9 +266,9 @@ export default function NewsDetailPage() {
               {/* Excerpt */}
               {news.excerpt && (
                 <div className="bg-gray-50 p-6 rounded-lg mb-8">
-                  <div 
-                    className="text-lg text-gray-700 italic html-content"
-                    dangerouslySetInnerHTML={{ __html: news.excerpt }}
+                  <SimpleHtmlContent 
+                    content={news.excerpt}
+                    className="text-lg text-gray-700 italic"
                   />
                 </div>
               )}
@@ -274,9 +276,9 @@ export default function NewsDetailPage() {
 
             {/* Article Content */}
             <div className="html-content">
-              <div 
+              <SimpleHtmlContent 
+                content={news.content}
                 className="text-gray-700 leading-relaxed"
-                dangerouslySetInnerHTML={{ __html: news.content }}
               />
             </div>
 
@@ -343,7 +345,8 @@ export default function NewsDetailPage() {
                   return (
                     <div 
                       key={index} 
-                      className="relative h-48 overflow-hidden rounded-lg group cursor-pointer"
+                      className="relative overflow-hidden rounded-lg group cursor-pointer"
+                      style={{ height: 'calc(12rem * 1.3 * 1.2)' }}
                       onClick={() => {
                         setCurrentImageIndex(imageIndex >= 0 ? imageIndex : 0)
                         setSelectedImage({

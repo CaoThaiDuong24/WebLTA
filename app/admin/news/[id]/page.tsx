@@ -27,6 +27,8 @@ import {
 import { useToast } from '@/hooks/use-toast'
 import { stripHtmlTags } from '@/lib/utils'
 import { ImageUrlDisplay, formatImageUrl } from '@/components/ui/image-url-display'
+import { SimpleHtmlContent } from '@/components/ui/simple-html-content'
+import { HtmlContentDebug } from '@/components/admin/html-content-debug'
 
 interface NewsItem {
   id: string
@@ -427,9 +429,9 @@ export default function NewsDetailPage() {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <div 
-                  className="text-muted-foreground html-content"
-                  dangerouslySetInnerHTML={{ __html: news.excerpt }}
+                <SimpleHtmlContent 
+                  content={news.excerpt}
+                  className="text-muted-foreground"
                 />
               </CardContent>
             </Card>
@@ -445,13 +447,20 @@ export default function NewsDetailPage() {
             </CardHeader>
             <CardContent>
               <div className="html-content">
-                <div 
+                <SimpleHtmlContent 
+                  content={news.content}
                   className="text-gray-700 leading-relaxed"
-                  dangerouslySetInnerHTML={{ __html: news.content }}
                 />
               </div>
             </CardContent>
           </Card>
+
+          {/* HTML Content Debug */}
+          <HtmlContentDebug 
+            content={news.content}
+            title="Debug: Nội dung chính"
+            showRawContent={true}
+          />
         </div>
 
         {/* Sidebar */}

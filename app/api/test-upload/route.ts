@@ -23,7 +23,7 @@ export async function POST(request: NextRequest) {
     })
 
     // Kiểm tra kích thước file
-    const maxSize = 10 * 1024 * 1024 // 10MB
+    const maxSize = 50 * 1024 * 1024 // 50MB
     if (file.size > maxSize) {
       return NextResponse.json(
         { 
@@ -71,7 +71,7 @@ export async function GET() {
     success: true,
     message: 'Upload test endpoint is ready',
     config: {
-      maxFileSize: '10MB',
+      maxFileSize: '50MB',
       supportedFormats: ['image/jpeg', 'image/png', 'image/gif', 'image/webp'],
       testEndpoint: 'POST /api/test-upload'
     }
