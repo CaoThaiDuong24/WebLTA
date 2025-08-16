@@ -137,8 +137,12 @@ export async function GET(request: NextRequest) {
       news = news.filter(item => item.featured)
     }
 
-    // Sắp xếp theo thời gian tạo mới nhất
-    news.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+    // Sắp xếp: ưu tiên publishedAt, sau đó đến updatedAt, cuối cùng là createdAt
+    news.sort(
+      (a, b) =>
+        new Date(b.publishedAt || b.updatedAt || b.createdAt).getTime() -
+        new Date(a.publishedAt || a.updatedAt || a.createdAt).getTime()
+    )
 
     // Phân trang
     const startIndex = (page - 1) * limit

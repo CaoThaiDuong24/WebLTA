@@ -4,16 +4,32 @@ import { NextRequest, NextResponse } from 'next/server'
 export const runtime = 'edge'
 export const dynamic = 'force-dynamic'
 
-// Google Apps Script Web App URL - cần deploy script và lấy URL này
-const GOOGLE_APPS_SCRIPT_URL = process.env.GOOGLE_APPS_SCRIPT_URL || 'https://script.google.com/macros/s/YOUR_SCRIPT_ID/exec'
-
-// Timeout for the request to Google Apps Script (in milliseconds)
-const APPS_SCRIPT_TIMEOUT_MS = Number(process.env.CONTACT_REQUEST_TIMEOUT_MS || 10000)
+// Helper to resolve config from Admin settings (with env fallback)
+async function resolveContactConfig(request: NextRequest) {
+  try {
+    const origin = request.nextUrl.origin
+    const res = await fetch(`${origin}/api/settings`, { cache: 'no-store' })
+    if (res.ok) {
+      const data = await res.json()
+      const settings = data.settings || {}
+      const url = settings.googleAppsScriptUrl || process.env.GOOGLE_APPS_SCRIPT_URL || 'https://script.google.com/macros/s/YOUR_SCRIPT_ID/exec'
+      const timeout = Number(settings.contactRequestTimeoutMs || process.env.CONTACT_REQUEST_TIMEOUT_MS || 10000)
+      return { url, timeout }
+    }
+  } catch (e) {
+    // ignore and fallback to env
+  }
+  return {
+    url: process.env.GOOGLE_APPS_SCRIPT_URL || 'https://script.google.com/macros/s/YOUR_SCRIPT_ID/exec',
+    timeout: Number(process.env.CONTACT_REQUEST_TIMEOUT_MS || 10000)
+  }
+}
 
 export async function POST(request: NextRequest) {
   try {
     console.log('Contact form submission received')
-    console.log('GOOGLE_APPS_SCRIPT_URL:', GOOGLE_APPS_SCRIPT_URL)
+    const { url: GOOGLE_APPS_SCRIPT_URL, timeout: APPS_SCRIPT_TIMEOUT_MS } = await resolveContactConfig(request)
+    console.log('Resolved GOOGLE_APPS_SCRIPT_URL:', GOOGLE_APPS_SCRIPT_URL)
 
     const body = await request.json()
     const { name, email, company, message } = body
@@ -134,12 +150,13 @@ export async function POST(request: NextRequest) {
 }
 
 export async function GET() {
+  // Note: GET is non-Edge contextless; we cannot access request here, so we only expose env defaults
   return NextResponse.json({
     message: 'Contact API endpoint',
     method: 'POST',
     required_fields: ['name', 'email', 'message'],
     optional_fields: ['company'],
     google_script_url: process.env.GOOGLE_APPS_SCRIPT_URL || 'Not configured',
-    timeout_ms: APPS_SCRIPT_TIMEOUT_MS
+    timeout_ms: Number(process.env.CONTACT_REQUEST_TIMEOUT_MS || 10000)
   })
 }

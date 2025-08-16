@@ -147,9 +147,11 @@ export default function UsersManagementPage() {
             <Search className="w-4 h-4" />
             Tìm kiếm
           </Button>
-          <Button className="gap-2 bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 shadow-lg">
-            <Plus className="h-4 w-4" />
-            Thêm người dùng mới
+          <Button className="gap-2 bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 shadow-lg" asChild>
+            <Link href="/admin/users/create">
+              <Plus className="h-4 w-4" />
+              Thêm người dùng mới
+            </Link>
           </Button>
         </div>
       </div>

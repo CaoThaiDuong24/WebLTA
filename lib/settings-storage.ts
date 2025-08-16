@@ -54,6 +54,10 @@ const defaultSettings = {
   wordpressFeaturedImageEnabled: true,
   wordpressExcerptLength: 150,
   wordpressStatus: 'draft' as 'draft' | 'publish' | 'private',
+
+  // Contact / Google Apps Script
+  googleAppsScriptUrl: '',
+  contactRequestTimeoutMs: 10000,
   
   // Metadata
   lastUpdated: new Date().toISOString(),
@@ -101,6 +105,10 @@ export interface SystemSettings {
   wordpressFeaturedImageEnabled: boolean
   wordpressExcerptLength: number
   wordpressStatus: 'draft' | 'publish' | 'private'
+
+  // Contact / Google Apps Script
+  googleAppsScriptUrl: string
+  contactRequestTimeoutMs: number
   
   // Metadata
   lastUpdated: string
@@ -121,9 +129,16 @@ export const loadSettings = (): SystemSettings => {
     const data = fs.readFileSync(SETTINGS_FILE, 'utf8')
     const settings = JSON.parse(data)
     
+    // Ensure new fields exist with defaults for backward compatibility
+    const normalized = {
+      ...settings,
+      googleAppsScriptUrl: settings.googleAppsScriptUrl ?? '',
+      contactRequestTimeoutMs: settings.contactRequestTimeoutMs ?? 10000,
+    }
+
     // Decrypt sensitive data
     const decryptedSettings = {
-      ...settings,
+      ...normalized,
       smtpUser: settings.smtpUser?.startsWith('ENCRYPTED:') ? 
         decryptSensitiveData(settings.smtpUser.replace('ENCRYPTED:', '')) : settings.smtpUser,
       smtpPass: settings.smtpPass?.startsWith('ENCRYPTED:') ? 
@@ -136,9 +151,6 @@ export const loadSettings = (): SystemSettings => {
     
     console.log('Settings loaded:', sanitizeForLog(decryptedSettings))
     return decryptedSettings
-    
-    // Merge with defaults to ensure all fields exist
-    return { ...defaultSettings, ...settings }
   } catch (error) {
     console.error('Error loading settings:', error)
     return defaultSettings

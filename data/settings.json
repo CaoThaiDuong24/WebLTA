@@ -30,7 +30,7 @@
   "wordpressFeaturedImageEnabled": true,
   "wordpressExcerptLength": 150,
   "wordpressStatus": "draft",
-  "lastUpdated": "2025-08-08T07:27:30.266Z",
+  "lastUpdated": "2025-08-14T09:28:58.967Z",
   "updatedBy": "admin",
   "wordpressConfig": {
     "siteUrl": "https://wp2.ltacv.com",
@@ -43,5 +43,7 @@
     "excerptLength": 150,
     "status": "draft",
     "isConnected": true
-  }
+  },
+  "googleAppsScriptUrl": "https://script.google.com/macros/s/AKfycbwe3694jQKdYedmWKVVrSDYbWTg_OlzM_jpCSWh3jBPEttl9WtOJTuzL9vcgcIWId69Xg/exec",
+  "contactRequestTimeoutMs": 10000
 }

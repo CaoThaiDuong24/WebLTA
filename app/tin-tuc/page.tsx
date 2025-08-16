@@ -36,12 +36,17 @@ function NewsPageContent() {
         const result = await response.json()
         
         if (result.success) {
-          const publishedNews = result.data
-          setNews(publishedNews)
+          const publishedNews = result.data as NewsItem[]
+          // Sắp xếp phía client (phòng trường hợp API chưa đúng): ưu tiên publishedAt > updatedAt > createdAt
+          const sorted = [...publishedNews].sort(
+            (a, b) => new Date(b.publishedAt || b.updatedAt || b.createdAt).getTime() -
+                      new Date(a.publishedAt || a.updatedAt || a.createdAt).getTime()
+          )
+          setNews(sorted)
           
-          // Lấy tin nổi bật đầu tiên
-          const featured = publishedNews.find((item: NewsItem) => item.featured)
-          setFeaturedNews(featured || publishedNews[0] || null)
+          // Lấy tin nổi bật đầu tiên (nếu có); nếu không, dùng phần tử đầu tiên sau khi sắp xếp
+          const featured = sorted.find((item: NewsItem) => item.featured)
+          setFeaturedNews(featured || sorted[0] || null)
           
           // Lấy danh sách danh mục từ tin tức
           const uniqueCategories = [...new Set(publishedNews.map((item: NewsItem) => item.category).filter(Boolean))] as string[]
@@ -86,7 +91,7 @@ function NewsPageContent() {
     return html.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim()
   }
 
-  // Get recent posts (3 most recent)
+  // Get recent posts (3 most recent from already-sorted list)
   const recentPosts = news.slice(0, 3)
 
   // Filter news by category
@@ -158,7 +163,7 @@ function NewsPageContent() {
                   <div className="flex items-center gap-4 mb-6">
                     <div className="flex items-center gap-1.5 text-xs text-gray-500 bg-white/60 px-2 py-1 rounded-md">
                       <Calendar className="h-3 w-3 text-[#4CAF50]" />
-                      <span>{formatDate(featuredNews.createdAt)}</span>
+                      <span>{formatDate(featuredNews.publishedAt || featuredNews.createdAt)}</span>
                     </div>
                     <div className="flex items-center gap-1.5 text-xs text-gray-500 bg-white/60 px-2 py-1 rounded-md">
                       <User className="h-3 w-3 text-[#4CAF50]" />
@@ -265,7 +270,7 @@ function NewsPageContent() {
                           <div className="flex items-center justify-between">
                             <div className="flex items-center gap-1.5 text-xs text-gray-500">
                               <Calendar className="h-3 w-3 text-[#4CAF50]" />
-                              <span>{formatDate(item.createdAt)}</span>
+                              <span>{formatDate(item.publishedAt || item.createdAt)}</span>
                             </div>
                             <div className="flex items-center gap-1.5 text-xs text-gray-500">
                               <User className="h-3 w-3 text-[#4CAF50]" />
@@ -481,7 +486,7 @@ function NewsPageContent() {
                             </h4>
                           </Link>
                           <p className="text-xs text-gray-500 mt-1">
-                            {formatDate(item.createdAt)}
+                             {formatDate(item.publishedAt || item.createdAt)}
                           </p>
                         </div>
                       </li>

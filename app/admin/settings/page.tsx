@@ -21,6 +21,7 @@ import {
   RefreshCw,
   CheckCircle,
   AlertCircle,
+  Link as LinkIcon,
   Loader2
 } from 'lucide-react'
 import { WordPressConfig } from '@/components/admin/wordpress-config'
@@ -69,6 +70,10 @@ interface SystemSettings {
   wordpressFeaturedImageEnabled: boolean
   wordpressExcerptLength: number
   wordpressStatus: 'draft' | 'publish' | 'private'
+
+  // Contact / Google Apps Script
+  googleAppsScriptUrl: string
+  contactRequestTimeoutMs: number
   
   // Metadata
   lastUpdated?: string
@@ -121,7 +126,11 @@ export default function SettingsPage() {
     wordpressDefaultTags: [],
     wordpressFeaturedImageEnabled: true,
     wordpressExcerptLength: 150,
-    wordpressStatus: 'draft'
+    wordpressStatus: 'draft',
+
+    // Contact / Google Apps Script
+    googleAppsScriptUrl: '',
+    contactRequestTimeoutMs: 10000
   })
 
   // Load settings from localStorage on component mount
@@ -311,6 +320,42 @@ export default function SettingsPage() {
                 id="maintenance" 
                 checked={settings.maintenanceMode}
                 onCheckedChange={(checked) => handleInputChange('maintenanceMode', checked)}
+                disabled={isLoading}
+              />
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Contact / Google Apps Script Settings */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center space-x-2">
+              <LinkIcon className="h-5 w-5" />
+              <span>Google Apps Script (Liên hệ)</span>
+            </CardTitle>
+            <CardDescription>
+              Cấu hình URL Apps Script nhận dữ liệu form liên hệ và thời gian chờ phản hồi
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="space-y-2">
+              <Label htmlFor="googleAppsScriptUrl" className="text-sm">Apps Script Web App URL</Label>
+              <Input 
+                id="googleAppsScriptUrl" 
+                placeholder="https://script.google.com/macros/s/XXXX/exec"
+                value={settings.googleAppsScriptUrl || ''}
+                onChange={(e) => handleInputChange('googleAppsScriptUrl', e.target.value)}
+                disabled={isLoading}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="contactRequestTimeoutMs" className="text-sm">Timeout (ms)</Label>
+              <Input 
+                id="contactRequestTimeoutMs" 
+                type="number"
+                value={settings.contactRequestTimeoutMs || 10000}
+                onChange={(e) => handleInputChange('contactRequestTimeoutMs', parseInt(e.target.value) || 10000)}
                 disabled={isLoading}
               />
             </div>

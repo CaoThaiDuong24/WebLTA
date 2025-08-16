@@ -48,6 +48,10 @@ interface SystemSettings {
   // Metadata
   lastUpdated?: string
   updatedBy?: string
+
+  // Contact / Google Apps Script
+  googleAppsScriptUrl: string
+  contactRequestTimeoutMs: number
 }
 
 interface SettingsContextType {
@@ -126,7 +130,11 @@ export function SettingsProvider({ children }: SettingsProviderProps) {
         wordpressDefaultTags: [],
         wordpressFeaturedImageEnabled: true,
         wordpressExcerptLength: 150,
-        wordpressStatus: 'draft' as 'draft' | 'publish' | 'private'
+        wordpressStatus: 'draft' as 'draft' | 'publish' | 'private',
+
+        // Contact / Google Apps Script
+        googleAppsScriptUrl: '',
+        contactRequestTimeoutMs: 10000
       }
       console.log('Using fallback settings:', fallbackSettings)
       setSettings(fallbackSettings)

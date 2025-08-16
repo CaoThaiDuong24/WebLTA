@@ -43,6 +43,10 @@ interface SystemSettings {
   wordpressFeaturedImageEnabled: boolean
   wordpressExcerptLength: number
   wordpressStatus: 'draft' | 'publish' | 'private'
+
+  // Contact / Google Apps Script Settings
+  googleAppsScriptUrl: string
+  contactRequestTimeoutMs: number
   
   // Metadata
   lastUpdated?: string
@@ -96,14 +100,24 @@ const loadSettings = (): SystemSettings => {
         wordpressDefaultTags: [],
         wordpressFeaturedImageEnabled: true,
         wordpressExcerptLength: 150,
-        wordpressStatus: 'draft'
+        wordpressStatus: 'draft',
+
+        // Contact / Google Apps Script
+        googleAppsScriptUrl: '',
+        contactRequestTimeoutMs: 10000
       }
       fs.writeFileSync(SETTINGS_FILE_PATH, JSON.stringify(defaultSettings, null, 2))
       return defaultSettings
     }
     const data = fs.readFileSync(SETTINGS_FILE_PATH, 'utf8')
-    const settings = JSON.parse(data)
-    return settings as SystemSettings
+    const raw = JSON.parse(data)
+    // Merge to ensure new fields exist even if file was created before these keys
+    const merged: SystemSettings = {
+      ...raw,
+      googleAppsScriptUrl: raw.googleAppsScriptUrl ?? '',
+      contactRequestTimeoutMs: raw.contactRequestTimeoutMs ?? 10000
+    }
+    return merged
   } catch (error) {
     console.error('Error loading settings:', error)
     // Trả về default settings nếu có lỗi
@@ -138,7 +152,11 @@ const loadSettings = (): SystemSettings => {
       wordpressDefaultTags: [],
       wordpressFeaturedImageEnabled: true,
       wordpressExcerptLength: 150,
-      wordpressStatus: 'draft'
+      wordpressStatus: 'draft',
+
+      // Contact / Google Apps Script
+      googleAppsScriptUrl: '',
+      contactRequestTimeoutMs: 10000
     }
   }
 }
@@ -211,7 +229,11 @@ const resetSettings = (): SystemSettings => {
     wordpressDefaultTags: [],
     wordpressFeaturedImageEnabled: true,
     wordpressExcerptLength: 150,
-    wordpressStatus: 'draft'
+    wordpressStatus: 'draft',
+
+    // Contact / Google Apps Script
+    googleAppsScriptUrl: '',
+    contactRequestTimeoutMs: 10000
   }
   saveSettings(defaultSettings)
   return defaultSettings

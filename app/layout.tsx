@@ -1,6 +1,7 @@
 import { ThemeProvider } from "@/components/theme-provider"
 import { LanguageProvider } from "@/contexts/language-context"
 import { Providers } from "@/app/providers"
+import { ChatBoxWrapper } from "@/components/chat-box-wrapper"
 import "./globals.css"
 import type { Metadata } from 'next'
 
@@ -23,6 +24,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <ThemeProvider attribute="class" defaultTheme="light">
             <LanguageProvider>
               {children}
+              <ChatBoxWrapper />
             </LanguageProvider>
           </ThemeProvider>
         </Providers>

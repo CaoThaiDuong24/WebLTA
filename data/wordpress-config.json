@@ -2,14 +2,11 @@
   "siteUrl": "https://wp2.ltacv.com",
   "username": "lta2",
   "applicationPassword": "m5ng lGbg T7L3 sfPg CuO6 b6TZ",
-  "autoPublish": true,
+  "autoPublish": false,
   "defaultCategory": "",
   "defaultTags": [],
   "featuredImageEnabled": true,
   "excerptLength": 150,
   "status": "draft",
-  "isConnected": true,
-  "restApiBlocked": false,
-  "syncMethod": "rest",
-  "lastUpdated": "2025-08-12T06:43:52.374Z"
+  "isConnected": true
 }
