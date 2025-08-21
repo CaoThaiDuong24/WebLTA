@@ -5,7 +5,7 @@
   "maintenanceMode": false,
   "smtpHost": "smtp.gmail.com",
   "smtpPort": "587",
-  "smtpUser": "ENCRYPTED:IJRRmwuA9a0T8IoYMyoBtQI8PP2aV5Ef9kk=",
+  "smtpUser": "ENCRYPTED:t4xyh8+bBbsT8IoYMyoBtQI8PP2aV5Ef9kk=",
   "smtpPass": "",
   "twoFactorAuth": false,
   "sessionTimeout": 30,
@@ -30,8 +30,8 @@
   "wordpressFeaturedImageEnabled": true,
   "wordpressExcerptLength": 150,
   "wordpressStatus": "draft",
-  "googleAppsScriptUrl": "https://script.google.com/macros/s/AKfycbwe3694jQKdYedmWKVVrSDYbWTg_OlzM_jpCSWh3jBPEttl9WtOJTuzL9vcgcIWId69Xg/exec",
+  "googleAppsScriptUrl": "ENCRYPTED:Swl9/Dm4PJAV64wNMHxX2h0rL7qJTNJW70gPg8R3Ia9P2T6awJ6ylFLs1zwIIAGWDD844M8ByFvRbAy2xD0vl2mgBYnwqISFKsufIgwqArgxIi2Qqm+UAuplOKrVLS75dYIcsfeZp6tE6ZsaIA8vvAp+ZIueF5lJ5UQ=",
   "contactRequestTimeoutMs": 10000,
-  "lastUpdated": "2025-08-21T09:15:20.489Z",
+  "lastUpdated": "2025-08-21T10:11:29.817Z",
   "updatedBy": "admin"
 }

@@ -147,9 +147,15 @@ export const loadSettings = (): SystemSettings => {
         decryptSensitiveData(settings.wordpressUsername.replace('ENCRYPTED:', '')) : settings.wordpressUsername,
       wordpressApplicationPassword: settings.wordpressApplicationPassword?.startsWith('ENCRYPTED:') ? 
         decryptSensitiveData(settings.wordpressApplicationPassword.replace('ENCRYPTED:', '')) : settings.wordpressApplicationPassword,
+      googleAppsScriptUrl: settings.googleAppsScriptUrl?.startsWith('ENCRYPTED:') ?
+        decryptSensitiveData(settings.googleAppsScriptUrl.replace('ENCRYPTED:', '')) : settings.googleAppsScriptUrl,
     }
     
-    console.log('Settings loaded:', sanitizeForLog(decryptedSettings))
+    try {
+      console.log('Settings loaded:', sanitizeForLog(JSON.stringify(decryptedSettings)))
+    } catch {
+      console.log('Settings loaded (masked)')
+    }
     return decryptedSettings
   } catch (error) {
     console.error('Error loading settings:', error)
@@ -169,6 +175,7 @@ export const saveSettings = (settings: SystemSettings): void => {
       smtpPass: settings.smtpPass ? `ENCRYPTED:${encryptSensitiveData(settings.smtpPass)}` : '',
       wordpressUsername: settings.wordpressUsername ? `ENCRYPTED:${encryptSensitiveData(settings.wordpressUsername)}` : '',
       wordpressApplicationPassword: settings.wordpressApplicationPassword ? `ENCRYPTED:${encryptSensitiveData(settings.wordpressApplicationPassword)}` : '',
+      googleAppsScriptUrl: settings.googleAppsScriptUrl ? `ENCRYPTED:${encryptSensitiveData(settings.googleAppsScriptUrl)}` : '',
       lastUpdated: new Date().toISOString(),
       updatedBy: 'admin'
     }
