@@ -28,6 +28,12 @@ const configSchema = z.object({
   siteUrl: z.string().url('URL WordPress không hợp lệ'),
   username: z.string().min(1, 'Username là bắt buộc'),
   applicationPassword: z.string().min(1, 'Application Password là bắt buộc'),
+  dbHost: z.string().optional(),
+  dbPort: z.union([z.string(), z.number()]).optional(),
+  dbName: z.string().optional(),
+  dbUser: z.string().optional(),
+  dbPassword: z.string().optional(),
+  tablePrefix: z.string().optional(),
 })
 
 type ConfigForm = z.infer<typeof configSchema>
@@ -37,6 +43,14 @@ interface WordPressConfig {
   username: string
   applicationPassword: string
   isConnected: boolean
+  db?: {
+    host?: string
+    user?: string
+    password?: string
+    database?: string
+    port?: number | string
+    tablePrefix?: string
+  }
 }
 
 export default function WordPressConfigPage() {
@@ -57,6 +71,12 @@ export default function WordPressConfigPage() {
       siteUrl: '',
       username: '',
       applicationPassword: '',
+      dbHost: '',
+      dbPort: 3306,
+      dbName: '',
+      dbUser: '',
+      dbPassword: '',
+      tablePrefix: 'wp_',
     },
   })
 
@@ -71,6 +91,12 @@ export default function WordPressConfigPage() {
           setValue('siteUrl', config.siteUrl || '')
           setValue('username', config.username || '')
           setValue('applicationPassword', config.applicationPassword || '')
+          setValue('dbHost', config.db?.host || '')
+          setValue('dbPort', config.db?.port || 3306)
+          setValue('dbName', config.db?.database || '')
+          setValue('dbUser', config.db?.user || '')
+          setValue('dbPassword', '')
+          setValue('tablePrefix', config.db?.tablePrefix || 'wp_')
         }
       } catch (error) {
         console.error('Error loading config:', error)
@@ -277,6 +303,34 @@ export default function WordPressConfigPage() {
                 </p>
               </div>
 
+              {/* DB Section */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="dbHost">DB Host</Label>
+                  <Input id="dbHost" {...register('dbHost')} placeholder="localhost" />
+                </div>
+                <div>
+                  <Label htmlFor="dbPort">DB Port</Label>
+                  <Input id="dbPort" {...register('dbPort')} placeholder="3306" />
+                </div>
+                <div>
+                  <Label htmlFor="dbName">DB Name</Label>
+                  <Input id="dbName" {...register('dbName')} placeholder="wordpress_db" />
+                </div>
+                <div>
+                  <Label htmlFor="dbUser">DB User</Label>
+                  <Input id="dbUser" {...register('dbUser')} placeholder="root" />
+                </div>
+                <div className="md:col-span-2">
+                  <Label htmlFor="dbPassword">DB Password</Label>
+                  <Input id="dbPassword" type="password" {...register('dbPassword')} placeholder="••••••••" />
+                </div>
+                <div className="md:col-span-2">
+                  <Label htmlFor="tablePrefix">Table Prefix</Label>
+                  <Input id="tablePrefix" {...register('tablePrefix')} placeholder="wp_" />
+                </div>
+              </div>
+
               <div className="flex space-x-3">
                 <Button
                   type="submit"
@@ -312,6 +366,51 @@ export default function WordPressConfigPage() {
                       <TestTube className="mr-2 h-4 w-4" />
                       Test kết nối
                     </>
+                  )}
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={isTesting}
+                  onClick={async () => {
+                    setIsTesting(true)
+                    try {
+                      const payload = {
+                        host: (document.getElementById('dbHost') as HTMLInputElement)?.value,
+                        port: Number((document.getElementById('dbPort') as HTMLInputElement)?.value) || 3306,
+                        database: (document.getElementById('dbName') as HTMLInputElement)?.value,
+                        user: (document.getElementById('dbUser') as HTMLInputElement)?.value,
+                        password: (document.getElementById('dbPassword') as HTMLInputElement)?.value,
+                        tablePrefix: (document.getElementById('tablePrefix') as HTMLInputElement)?.value || 'wp_',
+                      }
+                      const res = await fetch('/api/test-db', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                      })
+                      const json = await res.json()
+                      if (res.ok) {
+                        toast({
+                          title: '✅ Kết nối DB thành công',
+                          description: `Bảng users: ${json?.tables?.users ? 'OK' : 'MISSING'}, usermeta: ${json?.tables?.usermeta ? 'OK' : 'MISSING'}`,
+                        })
+                      } else {
+                        toast({ title: '❌ Kết nối DB thất bại', description: json.error || 'Unknown error', variant: 'destructive' })
+                      }
+                    } catch (e: any) {
+                      toast({ title: '❌ Lỗi test DB', description: e?.message || String(e), variant: 'destructive' })
+                    } finally {
+                      setIsTesting(false)
+                    }
+                  }}
+                >
+                  {isTesting ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Đang test DB...
+                    </>
+                  ) : (
+                    'Test DB'
                   )}
                 </Button>
               </div>

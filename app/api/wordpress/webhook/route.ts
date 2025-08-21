@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import fs from 'fs'
 import path from 'path'
+import { getWordPressConfig } from '@/lib/wordpress-config'
 
 const NEWS_FILE_PATH = path.join(process.cwd(), 'data', 'news.json')
 
@@ -18,6 +19,11 @@ interface NewsItem {
   updatedAt?: string
   syncedFromWordPress?: boolean
   lastSyncDate?: string
+  featuredImage?: string
+  image?: string
+  imageAlt?: string
+  additionalImages?: string[]
+  relatedImages?: Array<{ id: string; url: string; alt: string; order: number }>
 }
 
 // Đọc danh sách tin tức
@@ -49,6 +55,8 @@ function saveNews(news: NewsItem[]) {
   }
 }
 
+// use centralized getWordPressConfig from lib
+
 export async function POST(request: NextRequest) {
   try {
     console.log('🔄 WordPress webhook received')
@@ -64,6 +72,11 @@ export async function POST(request: NextRequest) {
     }
     
     const news = loadNews()
+    const wpConfig = getWordPressConfig()
+    const siteUrl: string | null = wpConfig?.siteUrl ? String(wpConfig.siteUrl).replace(/\/$/, '') : null
+    const credentials: string | null = wpConfig?.username && wpConfig?.applicationPassword
+      ? Buffer.from(`${wpConfig.username}:${wpConfig.applicationPassword}`).toString('base64')
+      : null
     
     switch (action) {
       case 'post_created':
@@ -78,6 +91,73 @@ export async function POST(request: NextRequest) {
             item.title === (post.title?.rendered || post.title) ||
             item.slug === post.slug
           )
+        }
+        
+        // Ảnh đại diện và ảnh nhúng trong content
+        let featuredImage = ''
+        let image = ''
+        let imageAlt = ''
+        let additionalImages: string[] = []
+
+        // Từ embedded nếu có
+        if (post._embedded && post._embedded['wp:featuredmedia'] && post._embedded['wp:featuredmedia'][0]) {
+          const media = post._embedded['wp:featuredmedia'][0]
+          featuredImage = media.source_url || ''
+          image = media.source_url || ''
+          imageAlt = media.alt_text || ''
+        }
+        
+        // Nếu không có embedded, thử lấy theo featured_media id
+        if (!featuredImage && siteUrl && credentials && post.featured_media) {
+          try {
+            const mediaResp = await fetch(`${siteUrl}/wp-json/wp/v2/media/${post.featured_media}`, {
+              headers: {
+                'Authorization': `Basic ${credentials}`,
+                'Content-Type': 'application/json'
+              },
+              signal: AbortSignal.timeout(8000)
+            })
+            if (mediaResp.ok) {
+              const mediaJson: any = await mediaResp.json()
+              featuredImage = mediaJson?.source_url || ''
+              image = image || featuredImage
+              imageAlt = mediaJson?.alt_text || imageAlt
+            }
+          } catch (e) {}
+        }
+
+        // Quét ảnh trong nội dung
+        try {
+          const contentHtml: string = post.content?.rendered || post.content || ''
+          const matches = contentHtml.matchAll(/<img[^>]+src=["']([^"']+)["']/gi)
+          for (const m of matches) {
+            const url = m[1]
+            if (url && url !== featuredImage && !additionalImages.includes(url)) {
+              additionalImages.push(url)
+            }
+          }
+        } catch (e) {}
+
+        // Lấy attachments (media) thuộc post
+        if (siteUrl && credentials) {
+          try {
+            const listResp = await fetch(`${siteUrl}/wp-json/wp/v2/media?parent=${post.id}&per_page=100`, {
+              headers: {
+                'Authorization': `Basic ${credentials}`,
+                'Content-Type': 'application/json'
+              },
+              signal: AbortSignal.timeout(12000)
+            })
+            if (listResp.ok) {
+              const items: any[] = await listResp.json()
+              for (const it of items) {
+                const url = it?.source_url
+                if (url && url !== featuredImage && !additionalImages.includes(url)) {
+                  additionalImages.push(url)
+                }
+              }
+            }
+          } catch (e) {}
         }
         
         const newsItem = {
@@ -95,16 +175,51 @@ export async function POST(request: NextRequest) {
           createdAt: post.date,
           updatedAt: post.modified,
           syncedFromWordPress: true,
-          lastSyncDate: new Date().toISOString()
+          lastSyncDate: new Date().toISOString(),
+          featuredImage: featuredImage,
+          image: image,
+          imageAlt: imageAlt,
+          additionalImages: additionalImages,
+          relatedImages: additionalImages.map((url, idx) => ({ id: `${post.id}_${idx}`, url, alt: '', order: idx }))
         }
         
         if (existingIndex >= 0) {
-          // Cập nhật tin tức hiện có
-          news[existingIndex] = { ...news[existingIndex], ...newsItem }
+          // Cập nhật tin tức hiện có, hợp nhất ảnh
+          const existing = news[existingIndex]
+          const merged = {
+            ...existing,
+            ...newsItem,
+            featuredImage: newsItem.featuredImage || existing.featuredImage || existing.image || '',
+            image: newsItem.image || existing.image || existing.featuredImage || '',
+            imageAlt: newsItem.imageAlt || existing.imageAlt || existing.title || '',
+            additionalImages: Array.from(new Set([...(existing.additionalImages || []), ...(newsItem.additionalImages || [])])),
+            relatedImages: (() => {
+              const byUrl = new Map()
+              ;(existing.relatedImages || []).forEach((img: any) => { if (img?.url) byUrl.set(img.url, img) })
+              ;(newsItem.relatedImages || []).forEach((img: any) => { if (img?.url) byUrl.set(img.url, img) })
+              return Array.from(byUrl.values())
+            })()
+          }
+          news[existingIndex] = merged
           console.log('✅ Updated existing news:', newsItem.title)
         } else if (duplicateIndex >= 0) {
-          // Cập nhật tin tức duplicate
-          news[duplicateIndex] = { ...news[duplicateIndex], ...newsItem }
+          // Cập nhật tin tức duplicate, hợp nhất ảnh
+          const existing = news[duplicateIndex]
+          const merged = {
+            ...existing,
+            ...newsItem,
+            featuredImage: newsItem.featuredImage || existing.featuredImage || existing.image || '',
+            image: newsItem.image || existing.image || existing.featuredImage || '',
+            imageAlt: newsItem.imageAlt || existing.imageAlt || existing.title || '',
+            additionalImages: Array.from(new Set([...(existing.additionalImages || []), ...(newsItem.additionalImages || [])])),
+            relatedImages: (() => {
+              const byUrl = new Map()
+              ;(existing.relatedImages || []).forEach((img: any) => { if (img?.url) byUrl.set(img.url, img) })
+              ;(newsItem.relatedImages || []).forEach((img: any) => { if (img?.url) byUrl.set(img.url, img) })
+              return Array.from(byUrl.values())
+            })()
+          }
+          news[duplicateIndex] = merged
           console.log('✅ Updated duplicate news:', newsItem.title)
         } else {
           // Thêm tin tức mới

@@ -47,11 +47,11 @@ export function WordPressErrorNotification({
       <AlertDescription className="text-red-700">
         <div className="space-y-3">
           <p>
-            <strong>Nguyên nhân:</strong> {error.reason || 'REST API bị hạn chế bởi hosting provider'}
+            <strong>Nguyên nhân:</strong> {error.reason || 'Không thể đồng bộ qua REST API'}
           </p>
           
           <p>
-            <strong>Giải pháp:</strong> {error.solution || 'Liên hệ hosting provider để enable REST API'}
+            <strong>Giải pháp:</strong> {error.solution || 'Sử dụng đồng bộ qua plugin WordPress'}
           </p>
 
           <div className="flex items-center space-x-2">
@@ -179,7 +179,7 @@ export function WordPressSuccessNotification({
           <div className="flex items-center space-x-2">
             <Badge variant="outline" className="text-green-700 border-green-300">
               <Info className="w-3 h-3 mr-1" />
-              Phương thức: {method === 'rest-api' ? 'REST API' : method === 'fallback' ? 'Fallback' : 'Admin'}
+              Phương thức: {method === 'fallback' ? 'Fallback' : 'Admin/Plugin'}
             </Badge>
           </div>
 

@@ -458,7 +458,7 @@ export default function AdminDashboardPage() {
             <div className="flex-1">
               <h3 className="font-semibold text-orange-900 dark:text-orange-100">Đồng bộ WordPress</h3>
               <p className="text-sm text-orange-700 dark:text-orange-300 mb-3">
-                REST API bị hạn chế. Sử dụng đồng bộ thủ công để đăng bài.
+                Đồng bộ sử dụng plugin WordPress. REST API đã được loại bỏ.
               </p>
               <div className="flex gap-2">
                 <Link href="/admin/manual-wordpress-sync">

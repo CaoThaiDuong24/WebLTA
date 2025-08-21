@@ -74,11 +74,6 @@ export function WordPressSync() {
   // Load WordPress config from settings context
   useEffect(() => {
     if (settings) {
-      console.log('WordPressSync - Checking WordPress config from settings:', {
-        wordpressSiteUrl: settings.wordpressSiteUrl,
-        wordpressUsername: settings.wordpressUsername,
-        wordpressApplicationPassword: settings.wordpressApplicationPassword ? '***' : 'empty'
-      })
       
       // Check if WordPress is configured
       const isConfigured = settings.wordpressSiteUrl && 
@@ -100,11 +95,11 @@ export function WordPressSync() {
         
         setConfig(wpConfig)
         loadWordPressStats(wpConfig)
-        console.log('WordPressSync - WordPress is enabled with config:', wpConfig)
+        
       } else {
         setConfig(null)
         setIsConnected(false)
-        console.log('WordPressSync - WordPress is not configured')
+        
       }
     }
     
@@ -132,26 +127,26 @@ export function WordPressSync() {
   // Load danh sách tin tức local
   const loadLocalPosts = async () => {
     try {
-      console.log('🔄 Loading local posts...')
+      
       const response = await fetch('/api/news')
       
       if (response.ok) {
         const result = await response.json()
-        console.log('📊 Local posts response:', result)
+        
         
         if (result.success && result.data && Array.isArray(result.data)) {
           setLocalPosts(result.data)
-          console.log(`📋 Loaded ${result.data.length} local posts`)
+          
         } else {
-          console.error('❌ Invalid local posts response structure:', result)
+          
           setLocalPosts([])
         }
       } else {
-        console.error('❌ Failed to load local posts:', response.status)
+        
         setLocalPosts([])
       }
     } catch (error) {
-      console.error('❌ Error loading local posts:', error)
+      
       setLocalPosts([])
     }
   }
@@ -232,12 +227,12 @@ export function WordPressSync() {
   const testConnection = async () => {
     try {
       setIsTesting(true)
-      console.log('🔍 Testing WordPress connection...')
+      
       
       const response = await fetch('/api/wordpress/test-connection')
       const result = await response.json()
       
-      console.log('📊 Connection test result:', result)
+      
       
       if (result.success) {
         setIsConnected(true)
@@ -255,11 +250,11 @@ export function WordPressSync() {
         
         // Hiển thị chi tiết lỗi trong console
         if (result.details) {
-          console.error('🔍 Connection test details:', result.details)
+          
         }
       }
     } catch (error) {
-      console.error('❌ Error testing connection:', error)
+      
       setIsConnected(false)
       toast({
         title: "❌ Lỗi",
@@ -274,7 +269,7 @@ export function WordPressSync() {
   const syncFromWordPressViaCreate = async () => {
     try {
       setIsSyncing(true)
-      console.log('🔄 Syncing from WordPress via create API...')
+      
       
       const response = await fetch('/api/wordpress/sync-via-create', {
         method: 'POST',
@@ -284,7 +279,6 @@ export function WordPressSync() {
       })
       
       const result = await response.json()
-      console.log('📊 Sync via create API result:', result)
       
       if (result.success) {
         toast({
@@ -302,7 +296,7 @@ export function WordPressSync() {
         })
       }
     } catch (error) {
-      console.error('❌ Error syncing via create API:', error)
+      
       toast({
         title: "❌ Lỗi",
         description: "Không thể đồng bộ từ WordPress",
@@ -316,7 +310,7 @@ export function WordPressSync() {
   const syncFromWordPressReal = async () => {
     try {
       setIsSyncing(true)
-      console.log('🔄 Syncing from WordPress real...')
+      
       
       const response = await fetch('/api/wordpress/sync-real', {
         method: 'POST',
@@ -326,7 +320,6 @@ export function WordPressSync() {
       })
       
       const result = await response.json()
-      console.log('📊 Sync real result:', result)
       
       if (result.success) {
         toast({
@@ -344,7 +337,7 @@ export function WordPressSync() {
         })
       }
     } catch (error) {
-      console.error('❌ Error syncing real:', error)
+      
       toast({
         title: "❌ Lỗi",
         description: "Không thể đồng bộ từ WordPress",

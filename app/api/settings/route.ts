@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import fs from 'fs'
-import path from 'path'
+import { loadSettings as loadSettingsFromLib, saveSettings as saveSettingsToLib } from '@/lib/settings-storage'
+import { saveWordPressConfig } from '@/lib/wordpress-config'
 
 interface SystemSettings {
   // General Settings
@@ -53,146 +53,16 @@ interface SystemSettings {
   updatedBy?: string
 }
 
-const SETTINGS_FILE_PATH = path.join(process.cwd(), 'data', 'settings.json')
-const WORDPRESS_CONFIG_FILE_PATH = path.join(process.cwd(), 'data', 'wordpress-config.json')
-
-// Đảm bảo thư mục data tồn tại
-const ensureDataDirectory = () => {
-  const dataDir = path.dirname(SETTINGS_FILE_PATH)
-  if (!fs.existsSync(dataDir)) {
-    fs.mkdirSync(dataDir, { recursive: true })
-  }
-}
-
-// Đọc settings từ file
-const loadSettings = (): SystemSettings => {
-  try {
-    ensureDataDirectory()
-    if (!fs.existsSync(SETTINGS_FILE_PATH)) {
-      const defaultSettings: SystemSettings = {
-        siteName: 'LTA - Logistics Technology Application',
-        siteDescription: 'Ứng dụng công nghệ logistics hàng đầu Việt Nam',
-        siteUrl: 'https://lta.com.vn',
-        maintenanceMode: false,
-        smtpHost: 'smtp.gmail.com',
-        smtpPort: '587',
-        smtpUser: 'noreply@lta.com.vn',
-        smtpPass: '',
-        twoFactorAuth: false,
-        sessionTimeout: 0,
-        passwordPolicy: true,
-        loginAttempts: 5,
-        maxPasswordAge: 90,
-        requireSpecialChars: true,
-        lockoutDuration: 15,
-        enableAuditLog: true,
-        ipWhitelist: '',
-        sessionConcurrency: 1,
-        emailNotifications: true,
-        pushNotifications: false,
-        newsAlerts: true,
-        systemAlerts: true,
-        wordpressSiteUrl: 'https://wp2.ltacv.com',
-        wordpressUsername: '',
-        wordpressApplicationPassword: '',
-        wordpressAutoPublish: false,
-        wordpressDefaultCategory: '',
-        wordpressDefaultTags: [],
-        wordpressFeaturedImageEnabled: true,
-        wordpressExcerptLength: 150,
-        wordpressStatus: 'draft',
-
-        // Contact / Google Apps Script
-        googleAppsScriptUrl: '',
-        contactRequestTimeoutMs: 10000
-      }
-      fs.writeFileSync(SETTINGS_FILE_PATH, JSON.stringify(defaultSettings, null, 2))
-      return defaultSettings
-    }
-    const data = fs.readFileSync(SETTINGS_FILE_PATH, 'utf8')
-    const raw = JSON.parse(data)
-    // Merge to ensure new fields exist even if file was created before these keys
-    const merged: SystemSettings = {
-      ...raw,
-      googleAppsScriptUrl: raw.googleAppsScriptUrl ?? '',
-      contactRequestTimeoutMs: raw.contactRequestTimeoutMs ?? 10000
-    }
-    return merged
-  } catch (error) {
-    console.error('Error loading settings:', error)
-    // Trả về default settings nếu có lỗi
-    return {
-      siteName: 'LTA - Logistics Technology Application',
-      siteDescription: 'Ứng dụng công nghệ logistics hàng đầu Việt Nam',
-      siteUrl: 'https://lta.com.vn',
-      maintenanceMode: false,
-      smtpHost: 'smtp.gmail.com',
-      smtpPort: '587',
-      smtpUser: 'noreply@lta.com.vn',
-      smtpPass: '',
-      twoFactorAuth: false,
-      sessionTimeout: 0,
-      passwordPolicy: true,
-      loginAttempts: 5,
-      maxPasswordAge: 90,
-      requireSpecialChars: true,
-      lockoutDuration: 15,
-      enableAuditLog: true,
-      ipWhitelist: '',
-      sessionConcurrency: 1,
-      emailNotifications: true,
-      pushNotifications: false,
-      newsAlerts: true,
-      systemAlerts: true,
-      wordpressSiteUrl: 'https://wp2.ltacv.com',
-      wordpressUsername: '',
-      wordpressApplicationPassword: '',
-      wordpressAutoPublish: false,
-      wordpressDefaultCategory: '',
-      wordpressDefaultTags: [],
-      wordpressFeaturedImageEnabled: true,
-      wordpressExcerptLength: 150,
-      wordpressStatus: 'draft',
-
-      // Contact / Google Apps Script
-      googleAppsScriptUrl: '',
-      contactRequestTimeoutMs: 10000
-    }
-  }
-}
-
-// Lưu settings vào file
-const saveSettings = (settings: SystemSettings) => {
-  try {
-    ensureDataDirectory()
-    fs.writeFileSync(SETTINGS_FILE_PATH, JSON.stringify(settings, null, 2))
-  } catch (error) {
-    console.error('Error saving settings:', error)
-    throw error
-  }
-}
-
-// Lưu WordPress config vào file
-const saveWordPressConfig = (config: any) => {
-  try {
-    ensureDataDirectory()
-    fs.writeFileSync(WORDPRESS_CONFIG_FILE_PATH, JSON.stringify(config, null, 2))
-  } catch (error) {
-    console.error('Error saving WordPress config:', error)
-    throw error
-  }
-}
-
 // Cập nhật setting cụ thể
 const updateSetting = (key: keyof SystemSettings, value: any): SystemSettings => {
-  const currentSettings = loadSettings()
+  const currentSettings = loadSettingsFromLib() as any
   const updatedSettings = {
     ...currentSettings,
     [key]: value,
     lastUpdated: new Date().toISOString(),
     updatedBy: 'admin'
-  }
-  saveSettings(updatedSettings)
+  } as any
+  saveSettingsToLib(updatedSettings)
   return updatedSettings
 }
 
@@ -241,7 +111,7 @@ const resetSettings = (): SystemSettings => {
 
 export async function GET(request: NextRequest) {
   try {
-    const settings = loadSettings()
+    const settings = loadSettingsFromLib()
     return NextResponse.json({
       success: true,
       settings: settings
@@ -266,9 +136,9 @@ export async function POST(request: NextRequest) {
     }
     
     // Lưu settings chung
-    const currentSettings = loadSettings()
+    const currentSettings = loadSettingsFromLib()
     const updatedSettings = { ...currentSettings, ...body }
-    saveSettings(updatedSettings)
+    saveSettingsToLib(updatedSettings)
     
     return NextResponse.json({
       success: true,

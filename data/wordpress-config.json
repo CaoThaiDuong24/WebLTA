@@ -1,12 +1,26 @@
 {
   "siteUrl": "https://wp2.ltacv.com",
   "username": "lta2",
-  "applicationPassword": "m5ng lGbg T7L3 sfPg CuO6 b6TZ",
-  "autoPublish": false,
+  "applicationPassword": "QWPc sYWV Hsx3 uibF v5OA xEt0",
+  "isConnected": true,
+  "autoPublish": true,
+  "restApiBlocked": false,
+  "lastSyncDate": null,
+  "syncMethod": "rest",
+  "createdAt": "2024-01-01T00:00:00.000Z",
+  "updatedAt": "2025-08-19T00:00:00.000Z",
   "defaultCategory": "",
   "defaultTags": [],
   "featuredImageEnabled": true,
   "excerptLength": 150,
   "status": "draft",
-  "isConnected": true
+  "lastUpdated": "2025-08-20T04:51:37.110Z",
+  "db": {
+    "host": "wp2.ltacv.com",
+    "user": "lta2",
+    "password": "m5ng lGbg T7L3 sfPg CuO6 b6TZ",
+    "database": "wp_users",
+    "port": 3306,
+    "tablePrefix": "wp_"
+  }
 }

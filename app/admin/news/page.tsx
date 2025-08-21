@@ -245,17 +245,7 @@ export default function NewsManagementPage() {
 
   return (
     <div className="space-y-6">
-      {/* WordPress Sync Alert */}
-      <Alert className="border-orange-200 bg-orange-50 dark:border-orange-800 dark:bg-orange-900/20">
-        <AlertTriangle className="h-4 w-4 text-orange-600 dark:text-orange-400" />
-        <AlertDescription className="text-orange-800 dark:text-orange-200">
-          <strong>WordPress REST API bị hạn chế.</strong> Sử dụng{' '}
-          <Link href="/admin/manual-wordpress-sync" className="underline hover:no-underline font-medium">
-            đồng bộ thủ công
-          </Link>{' '}
-          để đăng bài lên WordPress. Liên hệ hosting provider để enable REST API.
-        </AlertDescription>
-      </Alert>
+      {/* WordPress notice removed: using plugin-based sync only */}
 
       {/* Header */}
       <div className="flex items-center justify-between">
@@ -424,7 +414,7 @@ export default function NewsManagementPage() {
 
                   <div className="flex items-center space-x-2">
                     {/* View */}
-                    <Button variant="outline" size="sm" onClick={() => router.push(`/admin/news/${item.id}`)} title="Xem">
+                    <Button variant="outline" size="sm" onClick={() => router.push(`/admin/news/${item.slug || item.id}`)} title="Xem">
                       <Eye className="h-4 w-4" />
                     </Button>
                     {/* Edit */}

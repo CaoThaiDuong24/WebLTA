@@ -33,19 +33,29 @@ export async function POST(request: NextRequest) {
 
     // Nếu có wordpressId, tìm post theo ID
     if (wordpressId) {
-      console.log(`🔍 Searching for WordPress post with ID: ${wordpressId}`)
+      console.log(`🔍 Searching for WordPress post by ID: ${wordpressId}`)
       
-      const postResponse = await fetch(`${siteUrl}/wp-json/wp/v2/posts/${wordpressId}`, {
-        headers: {
-          'Authorization': `Basic ${credentials}`,
-        },
-      })
+      try {
+        const response = await fetch(`${siteUrl}/wp-json/wp/v2/posts/${wordpressId}?_embed=1`, {
+          headers: {
+            'Authorization': `Basic ${credentials}`,
+            'Content-Type': 'application/json'
+          },
+          signal: AbortSignal.timeout(10000)
+        })
 
-      if (postResponse.ok) {
-        targetPost = await postResponse.json()
-        console.log(`✅ Found WordPress post: ${targetPost.title?.rendered || targetPost.title}`)
-      } else {
-        console.log(`❌ WordPress post with ID ${wordpressId} not found`)
+        if (response.ok) {
+          targetPost = await response.json()
+          console.log(`✅ Found WordPress post by ID: ${wordpressId}`)
+        } else {
+          console.log(`❌ WordPress post not found by ID: ${wordpressId}`)
+        }
+      } catch (error) {
+        console.error('❌ Error fetching WordPress post by ID:', error)
+        return NextResponse.json(
+          { error: 'Lỗi kết nối đến WordPress' },
+          { status: 503 }
+        )
       }
     }
 
@@ -58,33 +68,34 @@ export async function POST(request: NextRequest) {
       if (slug) searchParams.append('slug', slug)
       searchParams.append('per_page', '10')
       searchParams.append('status', 'publish,draft')
+      searchParams.append('_embed', '1')
 
-      const searchResponse = await fetch(`${siteUrl}/wp-json/wp/v2/posts?${searchParams}`, {
-        headers: {
-          'Authorization': `Basic ${credentials}`,
-        },
-      })
+      try {
+        const response = await fetch(`${siteUrl}/wp-json/wp/v2/posts?${searchParams.toString()}`, {
+          headers: {
+            'Authorization': `Basic ${credentials}`,
+            'Content-Type': 'application/json'
+          },
+          signal: AbortSignal.timeout(10000)
+        })
 
-      if (searchResponse.ok) {
-        const posts = await searchResponse.json()
-        if (posts.length > 0) {
-          // Tìm post phù hợp nhất
-          targetPost = posts.find((post: any) => {
-            const postTitle = post.title?.rendered || post.title
-            const postSlug = post.slug
-            
-            if (title && slug) {
-              return postTitle.toLowerCase().includes(title.toLowerCase()) && postSlug === slug
-            } else if (title) {
-              return postTitle.toLowerCase().includes(title.toLowerCase())
-            } else if (slug) {
-              return postSlug === slug
-            }
-            return false
-          }) || posts[0]
-          
-          console.log(`✅ Found WordPress post: ${targetPost.title?.rendered || targetPost.title}`)
+        if (response.ok) {
+          const posts = await response.json()
+          if (Array.isArray(posts) && posts.length > 0) {
+            targetPost = posts[0]
+            console.log(`✅ Found WordPress post by search: ${targetPost.title?.rendered || 'No title'}`)
+          } else {
+            console.log(`❌ No WordPress posts found by search: ${title || slug}`)
+          }
+        } else {
+          console.log(`❌ WordPress search failed: ${response.status}`)
         }
+      } catch (error) {
+        console.error('❌ Error searching WordPress posts:', error)
+        return NextResponse.json(
+          { error: 'Lỗi kết nối đến WordPress' },
+          { status: 503 }
+        )
       }
     }
 
@@ -142,21 +153,8 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Lấy thêm hình ảnh từ content nếu có
-    if (includeImages && targetPost.content?.rendered) {
-      const content = targetPost.content.rendered
-      const imgRegex = /<img[^>]+src="([^">]+)"/g
-      const matches = content.match(imgRegex)
-      
-      if (matches) {
-        additionalImages = matches.map((match: string) => {
-          const srcMatch = match.match(/src="([^"]+)"/)
-          return srcMatch ? srcMatch[1] : null
-        }).filter(Boolean)
-        
-        console.log(`📸 Found ${additionalImages.length} additional images in content`)
-      }
-    }
+    // Không lấy hình ảnh từ content để tránh trùng lặp
+    // additionalImages sẽ chỉ chứa attachments từ WordPress
 
     // Chuẩn bị dữ liệu tin tức để lưu
     const newsData = {

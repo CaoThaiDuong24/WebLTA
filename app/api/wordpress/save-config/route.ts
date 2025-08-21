@@ -1,16 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import fs from 'fs'
-import path from 'path'
-
-const WORDPRESS_CONFIG_FILE_PATH = path.join(process.cwd(), 'data', 'wordpress-config.json')
-
-// Đảm bảo thư mục data tồn tại
-const ensureDataDirectory = () => {
-  const dataDir = path.dirname(WORDPRESS_CONFIG_FILE_PATH)
-  if (!fs.existsSync(dataDir)) {
-    fs.mkdirSync(dataDir, { recursive: true })
-  }
-}
+import { saveWordPressConfig } from '@/lib/wordpress-config'
 
 export async function POST(request: NextRequest) {
   try {
@@ -26,24 +15,20 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Đọc cấu hình hiện tại nếu có
-    let currentConfig = {}
-    if (fs.existsSync(WORDPRESS_CONFIG_FILE_PATH)) {
-      try {
-        const existingData = fs.readFileSync(WORDPRESS_CONFIG_FILE_PATH, 'utf8')
-        currentConfig = JSON.parse(existingData)
-      } catch (error) {
-        console.log('⚠️ Error reading existing config, starting fresh')
-      }
-    }
-
-    // Cập nhật cấu hình
+    // Cập nhật cấu hình và lưu (được mã hóa trong helper)
     const updatedConfig = {
-      ...currentConfig,
       siteUrl: body.siteUrl,
       username: body.username,
       applicationPassword: body.applicationPassword,
-      autoPublish: body.autoPublish !== undefined ? body.autoPublish : true, // Mặc định bật auto-sync
+      db: {
+        host: body.dbHost || body.host,
+        user: body.dbUser || body.user,
+        password: body.dbPassword || body.password,
+        database: body.dbName || body.database,
+        port: body.dbPort || body.port || 3306,
+        tablePrefix: body.tablePrefix || body.wpTablePrefix || 'wp_'
+      },
+      autoPublish: body.autoPublish !== undefined ? body.autoPublish : true,
       defaultCategory: body.defaultCategory || '',
       defaultTags: body.defaultTags || [],
       featuredImageEnabled: body.featuredImageEnabled !== undefined ? body.featuredImageEnabled : true,
@@ -53,9 +38,7 @@ export async function POST(request: NextRequest) {
       lastUpdated: new Date().toISOString()
     }
 
-    // Lưu cấu hình
-    ensureDataDirectory()
-    fs.writeFileSync(WORDPRESS_CONFIG_FILE_PATH, JSON.stringify(updatedConfig, null, 2))
+    saveWordPressConfig(updatedConfig as any)
 
     console.log('✅ WordPress config saved successfully')
     console.log('🔄 Auto-sync status:', updatedConfig.autoPublish ? 'ENABLED' : 'DISABLED')
@@ -65,7 +48,11 @@ export async function POST(request: NextRequest) {
       message: 'Cấu hình WordPress đã được lưu thành công',
       data: {
         ...updatedConfig,
-        applicationPassword: '***HIDDEN***' // Ẩn mật khẩu trong response
+        applicationPassword: '***HIDDEN***', // Ẩn mật khẩu trong response
+        db: {
+          ...updatedConfig.db,
+          password: '***HIDDEN***'
+        }
       }
     })
 

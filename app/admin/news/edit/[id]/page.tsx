@@ -209,11 +209,17 @@ export default function EditNewsPage() {
 
 
   const generateSlug = (title: string) => {
-    return title
+    if (!title) return ''
+    const withoutDiacritics = title
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/đ/g, 'd')
+      .replace(/Đ/g, 'D')
+    return withoutDiacritics
       .toLowerCase()
       .trim()
-      .replace(/[^ws-]/g, '')
-      .replace(/[s_-]+/g, '-')
+      .replace(/[^a-z0-9\s-]/g, '')
+      .replace(/[\s_-]+/g, '-')
       .replace(/^-+|-+$/g, '')
   }
 
@@ -645,18 +651,27 @@ export default function EditNewsPage() {
                     disabled={uploadingImages}
                   />
                   {uploadingImages && (
-                    <div className="flex items-center space-x-2 mt-2">
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                      <span className="text-sm text-gray-600">Đang xử lý hình ảnh...</span>
-                    </div>
+                    <p className="text-sm text-blue-600 mt-1">Đang xử lý hình ảnh...</p>
                   )}
                   {featuredImagePreview && (
-                    <div className="mt-2">
-                      <img
-                        src={featuredImagePreview}
-                        alt="Featured preview"
-                        className="w-full h-32 object-cover rounded-md"
-                      />
+                    <div className="mt-3">
+                      <div className="relative inline-block">
+                        <img
+                          src={featuredImagePreview}
+                          alt="Featured image preview"
+                          className="w-32 h-32 object-cover rounded-lg border shadow-sm"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setFeaturedImagePreview('')
+                            setValue('featuredImage', '')
+                          }}
+                          className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs hover:bg-red-600 transition-colors"
+                        >
+                          ×
+                        </button>
+                      </div>
                     </div>
                   )}
                 </div>
@@ -672,15 +687,30 @@ export default function EditNewsPage() {
                     disabled={uploadingImages}
                   />
                   {additionalImagesPreview.length > 0 && (
-                    <div className="mt-2 grid grid-cols-2 gap-2">
-                      {additionalImagesPreview.map((imageUrl, index) => (
-                        <img
-                          key={index}
-                          src={imageUrl}
-                          alt={`Additional ${index + 1}`}
-                          className="w-full h-20 object-cover rounded-md"
-                        />
-                      ))}
+                    <div className="mt-3">
+                      <div className="grid grid-cols-2 gap-2">
+                        {additionalImagesPreview.map((imageUrl, index) => (
+                          <div key={index} className="relative">
+                            <img
+                              src={imageUrl}
+                              alt={`Additional image ${index + 1}`}
+                              className="w-24 h-24 object-cover rounded-lg border shadow-sm"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const newPreviews = additionalImagesPreview.filter((_, i) => i !== index)
+                                const newDataUrls = watch('additionalImages').filter((_, i) => i !== index)
+                                setAdditionalImagesPreview(newPreviews)
+                                setValue('additionalImages', newDataUrls)
+                              }}
+                              className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs hover:bg-red-600 transition-colors"
+                            >
+                              ×
+                            </button>
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   )}
                 </div>

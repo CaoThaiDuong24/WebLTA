@@ -340,25 +340,29 @@ export default function NewsDetailPage() {
               <h3 className="text-2xl font-bold text-gray-900 mb-6">Hình ảnh bổ sung</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {news.additionalImages.map((imageUrl, index) => {
+                  // Chỉ sử dụng additionalImages để tính toán index, không bao gồm các trường khác
+                  const additionalImagesIndex = index
                   const allImages = getAllImages(news)
-                  const imageIndex = allImages.findIndex(img => img === imageUrl)
+                  const globalImageIndex = allImages.findIndex(img => img === imageUrl)
+                  
                   return (
                     <div 
                       key={index} 
                       className="relative overflow-hidden rounded-lg group cursor-pointer"
                       style={{ height: 'calc(12rem * 1.3 * 1.2)' }}
                       onClick={() => {
-                        setCurrentImageIndex(imageIndex >= 0 ? imageIndex : 0)
+                        // Sử dụng global index để navigation trong modal hoạt động đúng
+                        setCurrentImageIndex(globalImageIndex >= 0 ? globalImageIndex : 0)
                         setSelectedImage({
                           url: imageUrl,
-                          alt: `${news.title} - Hình ảnh ${index + 1}`,
-                          index: imageIndex >= 0 ? imageIndex : 0
+                          alt: `${news.title} - Hình ảnh bổ sung ${additionalImagesIndex + 1}`,
+                          index: globalImageIndex >= 0 ? globalImageIndex : 0
                         })
                       }}
                     >
                       <Image
                         src={imageUrl}
-                        alt={`${news.title} - Hình ảnh ${index + 1}`}
+                        alt={`${news.title} - Hình ảnh bổ sung ${additionalImagesIndex + 1}`}
                         fill
                         className="object-cover group-hover:scale-105 transition-transform duration-300"
                       />

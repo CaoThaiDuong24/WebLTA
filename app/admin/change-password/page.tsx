@@ -64,8 +64,9 @@ export default function ChangePasswordPage() {
         setFormData({ currentPassword: '', newPassword: '', confirmPassword: '' })
         
         // Đăng xuất và chuyển đến trang đăng nhập sau 2 giây
-        setTimeout(() => {
-          signOut({ callbackUrl: '/admin/login' })
+        setTimeout(async () => {
+          await signOut({ redirect: false })
+          window.location.href = '/admin/login'
         }, 2000)
       } else {
         setMessage({ type: 'error', text: data.error || 'Có lỗi xảy ra khi thay đổi mật khẩu' })

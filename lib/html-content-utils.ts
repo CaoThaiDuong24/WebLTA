@@ -48,8 +48,9 @@ export function sanitizeHtmlContent(htmlContent: string): string {
     cleaned = cleaned
       .replace(/class="ql-([^"]*)"/g, 'class="ql-$1"')
       .replace(/style="([^"]*)"/g, (match, style) => {
-        // Làm sạch style attributes
-        const cleanStyle = style.replace(/[^\w\s\-:;()]/g, '')
+        // Làm sạch style attributes nhưng giữ lại các ký tự hợp lệ cho CSS
+        // Bao gồm: # , % . / ' " để hỗ trợ các giá trị như #fff, rgba(0,0,0,0.5), 100%, font-family với dấu phẩy/nháy
+        const cleanStyle = style.replace(/[^\w\s\-:;()#%,.\/\'\"]/g, '')
         return `style="${cleanStyle}"`
       })
 

@@ -49,7 +49,6 @@ export function ManualSyncHistory() {
       const history = JSON.parse(localStorage.getItem('manual-syncs') || '[]')
       setSyncHistory(history)
     } catch (error) {
-      console.error('Error loading sync history:', error)
     }
   }
 

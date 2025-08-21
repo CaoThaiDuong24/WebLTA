@@ -95,10 +95,15 @@ export default function AdminLoginPage() {
     }
 
     try {
+      // Lấy callbackUrl nếu có
+      const params = new URLSearchParams(window.location.search)
+      const callbackUrl = params.get('callbackUrl') || '/admin'
+
       const result = await signIn('credentials', {
         email: data.email,
         password: data.password,
         redirect: false,
+        callbackUrl,
       })
 
       if (result?.error) {
@@ -108,8 +113,8 @@ export default function AdminLoginPage() {
         setSuccess(true)
         // Redirect after showing success message
         setTimeout(() => {
-          router.push('/admin')
-        }, 2000)
+          router.push(callbackUrl)
+        }, 800)
       }
     } catch (error) {
       setError('Có lỗi xảy ra, vui lòng thử lại')

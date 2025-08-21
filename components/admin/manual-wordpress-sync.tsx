@@ -123,7 +123,6 @@ export function ManualWordPressSync({ post, onSuccess }: ManualSyncProps) {
       onSuccess?.()
 
     } catch (error) {
-      console.error('Manual sync error:', error)
       setSyncStatus('error')
       toast({
         title: "Lỗi",

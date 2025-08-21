@@ -464,33 +464,8 @@ body {
 }
 
 /* Đảm bảo các thẻ có style inline được hiển thị đúng */
-.html-content [style*="font-family"] {
-  font-family: unset !important;
-}
-
-.html-content [style*="font-size"] {
-  font-size: unset !important;
-}
-
-.html-content [style*="color"] {
-  color: unset !important;
-}
-
-.html-content [style*="background-color"] {
-  background-color: unset !important;
-}
-
-.html-content [style*="text-align"] {
-  text-align: unset !important;
-}
-
-.html-content [style*="font-weight"] {
-  font-weight: unset !important;
-}
-
-.html-content [style*="font-style"] {
-  font-style: unset !important;
-}
+/* Đừng ghi đè style inline từ trình soạn thảo; giữ nguyên màu sắc, font, v.v. */
+/* (Các rule unset inline styles trước đây đã được loại bỏ để tránh mất định dạng) */
 
 /* Đảm bảo tất cả các style được áp dụng đúng */
 .html-content * {
@@ -584,33 +559,7 @@ body {
 }
 
 /* Đảm bảo các style inline có độ ưu tiên cao nhất */
-.html-content [style*="font-family"] {
-  font-family: unset !important;
-}
-
-.html-content [style*="font-size"] {
-  font-size: unset !important;
-}
-
-.html-content [style*="color"] {
-  color: unset !important;
-}
-
-.html-content [style*="background-color"] {
-  background-color: unset !important;
-}
-
-.html-content [style*="text-align"] {
-  text-align: unset !important;
-}
-
-.html-content [style*="font-weight"] {
-  font-weight: unset !important;
-}
-
-.html-content [style*="font-style"] {
-  font-style: unset !important;
-}
+/* Loại bỏ các rule unsetting inline styles lần 2 (trùng lặp) */
 
 /* Đảm bảo các thẻ có style được hiển thị đúng */
 .html-content span[style],

@@ -62,7 +62,6 @@ export function HtmlContentDisplay({
 
       return processed.trim()
     } catch (error) {
-      console.error('Error processing HTML content:', error)
       return htmlContent // Trả về nội dung gốc nếu xử lý thất bại
     }
   }

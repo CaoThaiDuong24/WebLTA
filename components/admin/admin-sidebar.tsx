@@ -44,6 +44,11 @@ const menuItems = [
         title: 'Thêm tin tức mới',
         href: '/admin/news/create',
         exact: true
+      },
+      {
+        title: 'Thùng rác tin tức',
+        href: '/admin/news/trash',
+        exact: true
       }
     ]
   },
@@ -76,6 +81,12 @@ const menuItems = [
     title: 'WordPress Plugin Manager',
     href: '/admin/wordpress-plugin',
     icon: Globe,
+    exact: true
+  },
+  {
+    title: 'Đồng bộ hình ảnh',
+    href: '/admin/image-sync',
+    icon: RefreshCw,
     exact: true
   }
 ]
@@ -183,7 +194,10 @@ export function AdminSidebar({ onClose }: AdminSidebarProps) {
         <Button
           variant="outline"
           className="w-full justify-start text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700 hover:border-red-300 dark:text-red-400 dark:border-red-800 dark:hover:bg-red-900/20 dark:hover:text-red-300 dark:hover:border-red-700 text-sm"
-          onClick={() => signOut({ callbackUrl: '/admin/login' })}
+          onClick={async () => {
+            await signOut({ redirect: false })
+            window.location.href = '/admin/login'
+          }}
         >
           <LogOut className="w-3 h-3 lg:w-4 lg:h-4 mr-2" />
           <span className="truncate">Đăng xuất</span>

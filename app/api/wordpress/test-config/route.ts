@@ -1,22 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import fs from 'fs'
 import path from 'path'
-
-const WORDPRESS_CONFIG_FILE_PATH = path.join(process.cwd(), 'data', 'wordpress-config.json')
-
-// Lấy cấu hình WordPress
-const getWordPressConfig = () => {
-  try {
-    if (fs.existsSync(WORDPRESS_CONFIG_FILE_PATH)) {
-      const configData = fs.readFileSync(WORDPRESS_CONFIG_FILE_PATH, 'utf8')
-      return JSON.parse(configData)
-    }
-    return null
-  } catch (error) {
-    console.error('Error loading WordPress config:', error)
-    return null
-  }
-}
+import { getWordPressConfig, saveWordPressConfig } from '@/lib/wordpress-config'
 
 export async function GET(request: NextRequest) {
   try {
@@ -30,7 +15,15 @@ export async function GET(request: NextRequest) {
         siteUrl: "",
         username: "",
         applicationPassword: "",
-        isConnected: false
+        isConnected: false,
+        db: {
+          host: '',
+          user: '',
+          password: '',
+          database: '',
+          port: 3306,
+          tablePrefix: 'wp_'
+        }
       }
       
       console.log('⚠️ No config found, returning empty config')
@@ -40,7 +33,8 @@ export async function GET(request: NextRequest) {
     console.log('✅ WordPress config found:', {
       siteUrl: wordpressConfig.siteUrl,
       username: wordpressConfig.username,
-      isConnected: wordpressConfig.isConnected
+      isConnected: wordpressConfig.isConnected,
+      hasDb: !!wordpressConfig.db
     })
 
     return NextResponse.json(wordpressConfig)
@@ -63,15 +57,19 @@ export async function POST(request: NextRequest) {
       siteUrl: body.siteUrl || 'https://wp2.ltacv.com',
       username: body.username || 'admin',
       applicationPassword: body.applicationPassword || 'test-password',
-      isConnected: true
+      isConnected: true,
+      db: body.db || {
+        host: body.dbHost || '',
+        user: body.dbUser || '',
+        password: body.dbPassword || '',
+        database: body.dbName || '',
+        port: body.dbPort || 3306,
+        tablePrefix: body.tablePrefix || 'wp_'
+      }
     }
     
-    // Lưu vào file
-    const dataDir = path.dirname(WORDPRESS_CONFIG_FILE_PATH)
-    if (!fs.existsSync(dataDir)) {
-      fs.mkdirSync(dataDir, { recursive: true })
-    }
-    fs.writeFileSync(WORDPRESS_CONFIG_FILE_PATH, JSON.stringify(testConfig, null, 2))
+    // Lưu vào file (sử dụng helper để mã hóa)
+    saveWordPressConfig(testConfig)
     
     return NextResponse.json({
       success: true,

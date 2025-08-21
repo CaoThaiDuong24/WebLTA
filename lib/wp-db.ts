@@ -1,15 +1,35 @@
 import mysql from 'mysql2'
+import fs from 'fs'
+import path from 'path'
+import { getWordPressConfig } from './wordpress-config'
+
+function readDbConfigFromFile() {
+  try {
+    // Use centralized config loader (handles decryption)
+    const wpConfig = getWordPressConfig()
+    if (!wpConfig) return null
+    const cfg = wpConfig.db || null
+    return cfg
+  } catch {
+    return null
+  }
+}
 
 export function getWpTablePrefix(): string {
-  return process.env.WP_TABLE_PREFIX || 'wp_'
+  const fileCfg = readDbConfigFromFile()
+  return (process.env.WP_TABLE_PREFIX || fileCfg?.tablePrefix || 'wp_') as string
 }
 
 export function getWpDbPool() {
-  const host = process.env.WP_DB_HOST
-  const user = process.env.WP_DB_USER
-  const password = process.env.WP_DB_PASSWORD
-  const database = process.env.WP_DB_NAME
-  const port = process.env.WP_DB_PORT ? parseInt(process.env.WP_DB_PORT, 10) : 3306
+  const fileCfg = readDbConfigFromFile()
+
+  const host = process.env.WP_DB_HOST || fileCfg?.dbHost || fileCfg?.host
+  const user = process.env.WP_DB_USER || fileCfg?.dbUser || fileCfg?.user
+  const password = process.env.WP_DB_PASSWORD || fileCfg?.dbPassword || fileCfg?.password
+  const database = process.env.WP_DB_NAME || fileCfg?.dbName || fileCfg?.database
+  const port = process.env.WP_DB_PORT
+    ? parseInt(process.env.WP_DB_PORT, 10)
+    : (fileCfg?.dbPort || fileCfg?.port || 3306)
 
   console.log('DB Config:', { host, user, database, port, hasPassword: !!password })
 

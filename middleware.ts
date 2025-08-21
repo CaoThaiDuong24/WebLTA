@@ -2,6 +2,10 @@ import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 
 export function middleware(request: NextRequest) {
+  // Always skip NextAuth API routes to avoid returning HTML to JSON callers
+  if (request.nextUrl.pathname.startsWith('/api/auth')) {
+    return NextResponse.next()
+  }
   // Chỉ áp dụng cho admin routes (trừ login và API)
   // Loại trừ trang tin tức public và các trang public khác
   if (request.nextUrl.pathname.startsWith('/admin') && 
@@ -48,8 +52,10 @@ export function middleware(request: NextRequest) {
     }
     
     // Nếu không có token nào, redirect về trang login
-    const loginUrl = new URL('/admin/login', request.url)
-    loginUrl.searchParams.set('callbackUrl', request.nextUrl.pathname)
+    const base = process.env.NEXTAUTH_URL || 'http://localhost:3000'
+    const loginUrl = new URL('/admin/login', base)
+    // Giữ nguyên full URL cần quay về (trên base chuẩn)
+    loginUrl.searchParams.set('callbackUrl', request.nextUrl.pathname + request.nextUrl.search)
     return NextResponse.redirect(loginUrl)
   }
   

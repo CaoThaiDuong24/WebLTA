@@ -34,58 +34,75 @@ export async function GET(request: NextRequest) {
 
     console.log(`🔍 Searching WordPress with query: "${query}"`)
 
-    // Tìm kiếm posts từ WordPress
-    const searchResponse = await fetch(`${siteUrl}/wp-json/wp/v2/posts?${searchParamsObj}`, {
-      headers: {
-        'Authorization': `Basic ${credentials}`,
-      },
-    })
+    // Gọi WordPress REST API
+    const apiUrl = `${siteUrl}/wp-json/wp/v2/posts?${searchParamsObj.toString()}`
+    console.log(`📡 Fetching from: ${apiUrl}`)
 
-    if (!searchResponse.ok) {
-      const errorText = await searchResponse.text()
-      console.error('❌ Failed to search WordPress posts:', errorText)
+    try {
+      const response = await fetch(apiUrl, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Basic ${credentials}`
+        },
+        // Timeout after 15 seconds
+        signal: AbortSignal.timeout(15000)
+      })
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`)
+      }
+
+      const posts = await response.json()
+      console.log(`✅ Found ${posts.length} posts from WordPress`)
+
+      // Transform posts to our format
+      const transformedPosts = posts.map((post: any) => {
+        const featuredImage = post._embedded?.['wp:featuredmedia']?.[0]?.source_url || ''
+        const author = post._embedded?.author?.[0]?.name || 'Admin'
+        
+        return {
+          id: post.id,
+          title: post.title?.rendered || '',
+          slug: post.slug,
+          excerpt: post.excerpt?.rendered || '',
+          content: post.content?.rendered || '',
+          status: post.status,
+          date: post.date,
+          modified: post.modified,
+          author: author,
+          featuredImage: featuredImage,
+          categories: post._embedded?.['wp:term']?.[0]?.map((cat: any) => cat.name) || [],
+          tags: post._embedded?.['wp:term']?.[1]?.map((tag: any) => tag.name) || [],
+          sticky: post.sticky || false,
+          link: post.link
+        }
+      })
+
+      return NextResponse.json({
+        success: true,
+        data: transformedPosts,
+        pagination: {
+          currentPage: page,
+          totalPages: Math.ceil((response.headers.get('X-WP-Total') || posts.length) / perPage),
+          totalPosts: parseInt(response.headers.get('X-WP-Total') || posts.length.toString()),
+          perPage: perPage,
+          hasNextPage: page < Math.ceil((response.headers.get('X-WP-Total') || posts.length) / perPage),
+          hasPrevPage: page > 1
+        },
+        searchQuery: query
+      })
+
+    } catch (fetchError) {
+      console.error('❌ Error fetching from WordPress:', fetchError)
       return NextResponse.json(
-        { error: `Không thể tìm kiếm posts từ WordPress: ${searchResponse.status} ${searchResponse.statusText}` },
-        { status: 500 }
+        { 
+          error: 'Không thể kết nối đến WordPress',
+          details: fetchError instanceof Error ? fetchError.message : 'Unknown error'
+        },
+        { status: 503 }
       )
     }
-
-    const posts = await searchResponse.json()
-    const totalPosts = parseInt(searchResponse.headers.get('X-WP-Total') || '0')
-    const totalPages = parseInt(searchResponse.headers.get('X-WP-TotalPages') || '0')
-
-    console.log(`📊 Found ${posts.length} posts (Total: ${totalPosts})`)
-
-    // Xử lý dữ liệu posts
-    const processedPosts = posts.map((post: any) => ({
-      id: post.id,
-      title: post.title?.rendered || post.title,
-      slug: post.slug,
-      excerpt: post.excerpt?.rendered || post.excerpt,
-      content: post.content?.rendered || post.content,
-      status: post.status,
-      date: post.date,
-      modified: post.modified,
-      author: post.author_info?.display_name || 'Unknown',
-      featuredImage: post._embedded?.['wp:featuredmedia']?.[0]?.source_url || null,
-      categories: post._embedded?.['wp:term']?.[0]?.map((cat: any) => cat.name) || [],
-      tags: post._embedded?.['wp:term']?.[1]?.map((tag: any) => tag.name) || [],
-      sticky: post.sticky || false
-    }))
-
-    return NextResponse.json({
-      success: true,
-      data: processedPosts,
-      pagination: {
-        currentPage: page,
-        totalPages,
-        totalPosts,
-        perPage,
-        hasNextPage: page < totalPages,
-        hasPrevPage: page > 1
-      },
-      searchQuery: query
-    })
 
   } catch (error) {
     console.error('❌ Error searching WordPress posts:', error)

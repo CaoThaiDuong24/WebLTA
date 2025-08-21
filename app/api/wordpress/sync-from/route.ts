@@ -3,7 +3,7 @@ import fs from 'fs'
 import path from 'path'
 
 // Sử dụng interface từ lib/image-utils
-import { NewsItem } from '@/lib/image-utils'
+import { NewsItem, fixImageData } from '@/lib/image-utils'
 
 // Đường dẫn đến file JSON lưu tin tức
 const NEWS_FILE_PATH = path.join(process.cwd(), 'data', 'news.json')
@@ -76,9 +76,12 @@ export async function POST(request: NextRequest) {
     const credentials = Buffer.from(`${config.username}:${config.applicationPassword}`).toString('base64')
     const siteUrl = config.siteUrl.replace(/\/$/, '')
 
+    // REST API disabled in this build; skip remote tests
+    console.log('ℹ️ REST API disabled; skipping remote tests')
+
     // Test 2: Check REST API
     try {
-      const apiUrl = `${siteUrl}/wp-json/wp/v2/posts?per_page=1`
+      const apiUrl = `${siteUrl}/wp-json/wp/v2/posts?_embed=1&per_page=50`
       console.log('🔗 Testing REST API:', apiUrl)
       
       const apiResponse = await fetch(apiUrl, {
@@ -201,6 +204,8 @@ export async function POST(request: NextRequest) {
 async function processPostsFromREST(posts: any[], config: any) {
     const currentNews = loadNews()
   console.log(`�� Current local news count: ${currentNews.length}`)
+  const baseUrl = config.siteUrl.replace(/\/$/, '')
+  const credentials = Buffer.from(`${config.username}:${config.applicationPassword}`).toString('base64')
   
     let syncedCount = 0
   let updatedCount = 0
@@ -218,6 +223,7 @@ async function processPostsFromREST(posts: any[], config: any) {
       let featuredImage = ''
         let imageUrl = ''
         let imageAlt = ''
+      let additionalImages: string[] = []
       
       if (post._embedded && post._embedded['wp:featuredmedia'] && post._embedded['wp:featuredmedia'][0]) {
         const media = post._embedded['wp:featuredmedia'][0]
@@ -225,6 +231,44 @@ async function processPostsFromREST(posts: any[], config: any) {
               imageUrl = media.source_url || ''
         imageAlt = media.alt_text || ''
         }
+
+      // Lấy ảnh nhúng trong nội dung (embedded images)
+      try {
+        const contentHtml: string = post.content?.rendered || ''
+        const matches = contentHtml.matchAll(/<img[^>]+src=["']([^"]+)["']/gi)
+        for (const m of matches) {
+          const url = m[1]
+          if (url && url !== featuredImage && !additionalImages.includes(url)) {
+            additionalImages.push(url)
+          }
+        }
+      } catch (e) {
+        // ignore parse error
+      }
+
+      // Lấy media attachments của bài viết
+      try {
+        const mediaResp = await fetch(`${baseUrl}/wp-json/wp/v2/media?parent=${post.id}&per_page=100`, {
+          headers: {
+            'Authorization': `Basic ${credentials}`,
+            'Content-Type': 'application/json'
+          },
+          signal: AbortSignal.timeout(15000)
+        })
+        if (mediaResp.ok) {
+          const medias = await mediaResp.json()
+          if (Array.isArray(medias)) {
+            for (const m of medias) {
+              const url = m?.source_url
+              if (url && url !== featuredImage && !additionalImages.includes(url)) {
+                additionalImages.push(url)
+              }
+            }
+          }
+        }
+      } catch (e) {
+        // ignore attachment errors
+      }
 
         const newsItem: NewsItem = {
         id: existingNewsIndex !== -1 ? currentNews[existingNewsIndex].id : `news_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
@@ -241,8 +285,8 @@ async function processPostsFromREST(posts: any[], config: any) {
           featuredImage: featuredImage,
           image: imageUrl,
           imageAlt: imageAlt,
-          additionalImages: [],
-          relatedImages: [],
+          additionalImages: additionalImages,
+          relatedImages: additionalImages.map((url, index) => ({ id: `${post.id}_${index}`, url, alt: '', order: index })),
           author: post.author || '',
           createdAt: post.date || new Date().toISOString(),
           updatedAt: post.modified || post.date || new Date().toISOString(),
@@ -253,13 +297,28 @@ async function processPostsFromREST(posts: any[], config: any) {
         }
 
         if (existingNewsIndex !== -1) {
-        // Cập nhật tin tức hiện có
-        currentNews[existingNewsIndex] = { ...currentNews[existingNewsIndex], ...newsItem }
+        // Cập nhật tin tức hiện có (giữ ảnh cũ nếu WP không trả về ảnh, hợp nhất danh sách ảnh)
+        const existing = currentNews[existingNewsIndex]
+        const merged: NewsItem = {
+          ...existing,
+          ...newsItem,
+          featuredImage: newsItem.featuredImage || existing.featuredImage || existing.image || '',
+          image: newsItem.image || existing.image || existing.featuredImage || '',
+          imageAlt: newsItem.imageAlt || existing.imageAlt || existing.title || '',
+          additionalImages: Array.from(new Set([...(existing.additionalImages || []), ...(newsItem.additionalImages || [])])),
+          relatedImages: (() => {
+            const byUrl = new Map<string, { id: string; url: string; alt: string; order: number }>()
+            ;(existing.relatedImages || []).forEach(img => { if (img.url) byUrl.set(img.url, img) })
+            ;(newsItem.relatedImages || []).forEach(img => { if (img.url) byUrl.set(img.url, img) })
+            return Array.from(byUrl.values())
+          })()
+        }
+        currentNews[existingNewsIndex] = fixImageData(merged)
         updatedCount++
         console.log(`🔄 Updated existing news: ${newsItem.title}`)
       } else {
         // Thêm tin tức mới
-        currentNews.push(newsItem)
+        currentNews.push(fixImageData(newsItem))
         syncedCount++
         console.log(`➕ Added new news: ${newsItem.title}`)
       }

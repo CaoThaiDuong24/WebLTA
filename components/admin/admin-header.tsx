@@ -76,7 +76,10 @@ export function AdminHeader({ onMenuClick }: AdminHeaderProps) {
 
   // Chức năng xác nhận đăng xuất
   const handleConfirmLogout = () => {
-    signOut({ callbackUrl: '/admin/login' })
+    ;(async () => {
+      await signOut({ redirect: false })
+      window.location.href = '/admin/login'
+    })()
     setShowLogoutDialog(false)
   }
 

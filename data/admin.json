@@ -1,16 +1,10 @@
 {
-  "id": "1",
-  "email": "ENCRYPTED:admin@lta.com",
-  "password": "ENCRYPTED:$2b$10$qy420TLjJ4KeoBUQ/W0D6e1CN3LBWfcbSyOLejCtXnF9hyyYT2Aky",
-  "name": "ENCRYPTED:Admin LTA",
-  "role": "admin",
-  "lastPasswordChange": "2025-08-04T05:15:07.184Z",
-  "passwordHistory": [
-    {
-      "password": "ENCRYPTED:$2a$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi",
-      "changedAt": "2024-01-15T00:00:00.000Z"
-    }
-  ],
-  "createdAt": "2024-01-01T00:00:00.000Z",
-  "updatedAt": "2025-08-04T05:15:07.184Z"
+  "email": "ENCRYPTED:iDkvl5qnZagc+5UULQYUgQ9mPryU",
+  "password": "ENCRYPTED:GyZ5O35gPGtZrZlZcnZczFwBBYa3SJdbzxcaoPBsILlvn32ixtiyrBLamU4RKUGZAgty/ZZf01D0FUaayTwVhw2fNJI=",
+  "name": "ENCRYPTED:dp1vANyG5I8xy7ldAiIVnAA=",
+  "role": "administrator",
+  "created_at": "2024-01-01T00:00:00.000Z",
+  "updated_at": "2024-01-01T00:00:00.000Z",
+  "security_version": "2.0",
+  "encryption_enabled": true
 }

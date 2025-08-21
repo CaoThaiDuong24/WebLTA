@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { getServerSession } from 'next-auth'
+import { authOptions } from '@/lib/auth'
 import fs from 'fs'
 import path from 'path'
-import { WordPressAPI } from '@/lib/wordpress'
-import { sanitizeHtmlContent, validateHtmlContent } from '@/lib/html-content-utils'
 
 // Định nghĩa interface cho tin tức
 interface NewsItem {
@@ -38,6 +38,8 @@ interface NewsItem {
 
 // Đường dẫn đến file JSON lưu tin tức
 const NEWS_FILE_PATH = path.join(process.cwd(), 'data', 'news.json')
+const TRASH_FILE_PATH = path.join(process.cwd(), 'data', 'trash-news.json')
+const PLUGIN_CONFIG_FILE_PATH = path.join(process.cwd(), 'data', 'plugin-config.json')
 
 // Đảm bảo thư mục data tồn tại
 const ensureDataDirectory = () => {
@@ -52,7 +54,6 @@ const loadNews = (): NewsItem[] => {
   try {
     ensureDataDirectory()
     if (!fs.existsSync(NEWS_FILE_PATH)) {
-      // Tạo file mới nếu chưa tồn tại
       fs.writeFileSync(NEWS_FILE_PATH, '[]')
       return []
     }
@@ -80,13 +81,20 @@ const generateId = (): string => {
   return Date.now().toString(36) + Math.random().toString(36).substr(2)
 }
 
+// Tạo slug từ title
 const generateSlug = (title: string): string => {
-  return title
+  if (!title) return ''
+  const withoutDiacritics = title
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/đ/g, 'd')
+    .replace(/Đ/g, 'D')
+  return withoutDiacritics
     .toLowerCase()
     .trim()
-    .replace(/[^\w\s-]/g, '') // Loại bỏ ký tự đặc biệt
-    .replace(/[\s_-]+/g, '-') // Thay thế khoảng trắng và dấu gạch dưới bằng dấu gạch ngang
-    .replace(/^-+|-+$/g, '') // Loại bỏ dấu gạch ngang ở đầu và cuối
+    .replace(/[^a-z0-9\s-]/g, '')
+    .replace(/[\s_-]+/g, '-')
+    .replace(/^-+|-+$/g, '')
 }
 
 // Kiểm tra slug đã tồn tại chưa
@@ -95,18 +103,16 @@ const isSlugExists = (slug: string, excludeId?: string): boolean => {
   return news.some(item => item.slug === slug && item.id !== excludeId)
 }
 
-// Lấy cấu hình WordPress từ localStorage (server-side)
-const getWordPressConfig = () => {
+// Lấy cấu hình Plugin đồng bộ WordPress
+const getPluginConfig = () => {
   try {
-    // Thử đọc từ file cấu hình
-    const configPath = path.join(process.cwd(), 'data', 'wordpress-config.json')
-    if (fs.existsSync(configPath)) {
-      const configData = fs.readFileSync(configPath, 'utf8')
+    if (fs.existsSync(PLUGIN_CONFIG_FILE_PATH)) {
+      const configData = fs.readFileSync(PLUGIN_CONFIG_FILE_PATH, 'utf8')
       return JSON.parse(configData)
     }
     return null
   } catch (error) {
-    console.error('Error loading WordPress config:', error)
+    console.error('Error loading Plugin config:', error)
     return null
   }
 }
@@ -115,13 +121,104 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
     const status = searchParams.get('status')
+    const trashed = searchParams.get('trashed') === 'true'
     const category = searchParams.get('category')
     const featured = searchParams.get('featured')
     const limit = parseInt(searchParams.get('limit') || '50')
     const page = parseInt(searchParams.get('page') || '1')
 
-    let news = loadNews()
+    // Nếu yêu cầu danh sách thùng rác, trả về từ file local
+    if (trashed) {
+      try {
+        if (fs.existsSync(TRASH_FILE_PATH)) {
+          const trashData = fs.readFileSync(TRASH_FILE_PATH, 'utf8')
+          const list = JSON.parse(trashData)
+          return NextResponse.json({ 
+            success: true, 
+            data: list, 
+            pagination: { page, limit, total: list.length, totalPages: Math.ceil(list.length / limit) } 
+          })
+        } else {
+          return NextResponse.json({ 
+            success: true, 
+            data: [], 
+            pagination: { page, limit, total: 0, totalPages: 0 } 
+          })
+        }
+      } catch (e) {
+        return NextResponse.json({ error: 'Không thể đọc thùng rác' }, { status: 500 })
+      }
+    }
 
+    // Luôn đồng bộ với WordPress để đảm bảo dữ liệu chính xác
+    let news = loadNews()
+    console.log(`📋 Current local data: ${news.length} posts`)
+    
+    try {
+      const pluginConfig = getPluginConfig()
+      if (pluginConfig?.apiKey) {
+        console.log('📡 Syncing with WordPress...')
+        
+        // Fetch posts from WordPress
+        const response = await fetch(`${request.nextUrl.origin}/api/wordpress/posts`, {
+          method: 'GET',
+          headers: { 'Content-Type': 'application/json' }
+        })
+
+        if (response.ok) {
+          const result = await response.json()
+          const wordpressPosts = result.data || []
+          console.log(`✅ Fetched ${wordpressPosts.length} posts from WordPress`)
+          
+          // Tạo map của WordPress posts để so sánh
+          const wpPostMap = new Map()
+          wordpressPosts.forEach((post: any) => {
+            wpPostMap.set(post.wordpressId || post.id, post)
+          })
+          
+          // Lọc local news, chỉ giữ lại những tin tức còn tồn tại ở WordPress
+          const filteredNews = news.filter((localPost: any) => {
+            const wpId = localPost.wordpressId || localPost.id?.replace('wp_', '')
+            const existsInWordPress = wpPostMap.has(parseInt(wpId))
+            
+            if (!existsInWordPress) {
+              console.log(`🗑️ Removing deleted post: ${localPost.title} (ID: ${wpId})`)
+            }
+            
+            return existsInWordPress
+          })
+          
+          // Cập nhật local data nếu có thay đổi
+          if (filteredNews.length !== news.length) {
+            console.log(`🔄 Updating local data: ${news.length} -> ${filteredNews.length} posts`)
+            saveNews(filteredNews)
+            news = filteredNews
+          }
+          
+          // Thêm tin tức mới từ WordPress nếu chưa có trong local
+          wordpressPosts.forEach((wpPost: any) => {
+            const wpId = wpPost.wordpressId || wpPost.id
+            const existsInLocal = news.some((localPost: any) => 
+              (localPost.wordpressId || localPost.id?.replace('wp_', '')) === wpId
+            )
+            
+            if (!existsInLocal) {
+              console.log(`➕ Adding new post from WordPress: ${wpPost.title} (ID: ${wpId})`)
+              news.push(wpPost)
+            }
+          })
+          
+        } else {
+          console.log('❌ Failed to fetch from WordPress, using local data only')
+        }
+      } else {
+        console.log('⚠️ No plugin config, using local data only')
+      }
+    } catch (wordpressError) {
+      console.error('❌ Error syncing with WordPress:', wordpressError)
+      console.log('📋 Using local data due to sync error')
+    }
+    
     // Lọc theo trạng thái
     if (status) {
       news = news.filter(item => item.status === status)
@@ -137,7 +234,7 @@ export async function GET(request: NextRequest) {
       news = news.filter(item => item.featured)
     }
 
-    // Sắp xếp: ưu tiên publishedAt, sau đó đến updatedAt, cuối cùng là createdAt
+    // Sắp xếp
     news.sort(
       (a, b) =>
         new Date(b.publishedAt || b.updatedAt || b.createdAt).getTime() -
@@ -157,8 +254,10 @@ export async function GET(request: NextRequest) {
         limit,
         total: news.length,
         totalPages: Math.ceil(news.length / limit)
-      }
+      },
+      source: 'local'
     })
+
   } catch (error) {
     console.error('Error getting news:', error)
     return NextResponse.json(
@@ -170,219 +269,185 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    console.log('POST /api/news called')
+    console.log('POST /api/news - Tạo tin tức mới')
     const body = await request.json()
-    console.log('Request body:', body)
-    
+
     // Validate required fields
     if (!body.title || !body.excerpt || !body.content) {
-      console.log('Missing required fields')
       return NextResponse.json(
         { error: 'Thiếu thông tin bắt buộc: title, excerpt, content' },
         { status: 400 }
       )
     }
 
-    // Tự động tạo slug nếu không có
+    // Generate slug if needed
     let slug = body.slug || generateSlug(body.title)
-    
-    // Kiểm tra slug đã tồn tại chưa và tạo slug mới nếu cần
     let counter = 1
-    let originalSlug = slug
+    const originalSlug = slug
     while (isSlugExists(slug)) {
       slug = `${originalSlug}-${counter}`
       counter++
     }
-    
-    console.log(`✅ Generated slug: ${slug}`)
 
-    // Validate và xử lý hình ảnh
-    const MAX_IMAGE_SIZE = 50 * 1024 * 1024; // 50MB cho data URL
-    
-    // Kiểm tra featuredImage
-    let featuredImage = body.featuredImage || '';
-    if (featuredImage && typeof featuredImage === 'string') {
-      if (featuredImage.startsWith('data:') && featuredImage.length > MAX_IMAGE_SIZE) {
-        console.log('⚠️ Featured image quá lớn, bỏ qua');
-        featuredImage = '';
-      }
-    }
-    
-    // Kiểm tra image - ưu tiên từ body, nếu không có thì dùng featuredImage
-    let image = body.image || featuredImage || '';
-    if (image && typeof image === 'string') {
-      if (image.startsWith('data:') && image.length > MAX_IMAGE_SIZE) {
-        console.log('⚠️ Image quá lớn, bỏ qua');
-        image = '';
-      }
-    }
-    
-    // Kiểm tra additionalImages
-    let additionalImages = body.additionalImages || [];
-    if (Array.isArray(additionalImages)) {
-      additionalImages = additionalImages.filter(img => {
-        if (typeof img === 'string' && img.startsWith('data:') && img.length > MAX_IMAGE_SIZE) {
-          console.log('⚠️ Additional image quá lớn, bỏ qua');
-          return false;
-        }
-        return img && img.trim() !== '';
-      });
+    // Prepare images
+    const MAX_IMAGE_SIZE = 50 * 1024 * 1024
+
+    let featuredImage = body.featuredImage || ''
+    if (featuredImage && typeof featuredImage === 'string' && featuredImage.startsWith('data:') && featuredImage.length > MAX_IMAGE_SIZE) {
+      featuredImage = ''
     }
 
-    // Xử lý và làm sạch nội dung HTML
-    let content = body.content || '';
-    let excerpt = body.excerpt || '';
-    
-    if (content && typeof content === 'string') {
-      const originalContent = content;
-      content = sanitizeHtmlContent(content);
-      
-      // Kiểm tra nội dung sau khi làm sạch
-      const validation = validateHtmlContent(content);
-      if (!validation.isValid) {
-        console.log('⚠️ Content validation issues:', validation.errors);
+    let additionalImages = Array.isArray(body.additionalImages) ? body.additionalImages : []
+    additionalImages = additionalImages.filter((img: string) => {
+      if (typeof img === 'string' && img.startsWith('data:') && img.length > MAX_IMAGE_SIZE) {
+        return false
       }
-      if (validation.warnings.length > 0) {
-        console.log('⚠️ Content validation warnings:', validation.warnings);
-      }
-      
-      if (content !== originalContent) {
-        console.log('✅ Content sanitized');
-      }
-    }
-    
-    if (excerpt && typeof excerpt === 'string') {
-      const originalExcerpt = excerpt;
-      excerpt = sanitizeHtmlContent(excerpt);
-      
-      if (excerpt !== originalExcerpt) {
-        console.log('✅ Excerpt sanitized');
-      }
-    }
-    
-    // Đảm bảo featuredImage và image có giá trị nếu có additionalImages
-    if (additionalImages.length > 0 && !featuredImage && !image) {
-      featuredImage = additionalImages[0];
-      image = additionalImages[0];
-      console.log('✅ Tự động set featuredImage và image từ additionalImages[0]');
-    }
-    
-    // Log thông tin hình ảnh
-    console.log('📸 Image processing summary:');
-    console.log('- Featured Image:', featuredImage ? 'Có' : 'Không');
-    console.log('- Main Image:', image ? 'Có' : 'Không');
-    console.log('- Additional Images:', additionalImages.length);
-    console.log('- Related Images:', body.relatedImages?.length || 0);
+      return img && img.trim() !== ''
+    })
 
-    // Tạo tin tức mới
-    const newNews: NewsItem = {
-      id: generateId(),
+    // Check plugin configuration
+    const pluginConfig = getPluginConfig()
+    if (!pluginConfig?.apiKey) {
+      return NextResponse.json(
+        { 
+          error: 'Plugin chưa được cấu hình API key. Vui lòng cấu hình trong WordPress Plugin Manager.',
+          warning: 'Không thể lưu tin tức khi WordPress chưa được kết nối.'
+        },
+        { status: 400 }
+      )
+    }
+
+    // Test WordPress connection first
+    console.log('🔍 Testing WordPress connection...')
+    try {
+      const testResponse = await fetch(`${request.nextUrl.origin}/api/wordpress/test-connection`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ config: pluginConfig })
+      })
+
+      if (!testResponse.ok) {
+        const testError = await testResponse.json()
+        return NextResponse.json(
+          { 
+            error: 'Không thể kết nối đến WordPress',
+            details: testError.error || 'Lỗi kết nối',
+            warning: 'Vui lòng kiểm tra cấu hình WordPress và thử lại.'
+          },
+          { status: 503 }
+        )
+      }
+    } catch (connectionError) {
+      return NextResponse.json(
+        { 
+          error: 'Lỗi kết nối đến WordPress',
+          details: connectionError instanceof Error ? connectionError.message : 'Unknown error',
+          warning: 'Vui lòng kiểm tra kết nối mạng và cấu hình WordPress.'
+        },
+        { status: 503 }
+      )
+    }
+
+    // Publish to WordPress via plugin
+    console.log('🔄 Publishing to WordPress via plugin...')
+    
+    const pluginPayload = {
       title: body.title,
-      slug: body.slug,
-      excerpt: excerpt,
-      content: content,
+      content: body.content,
+      excerpt: body.excerpt,
+      status: body.status || 'draft',
+      category: body.category || '',
+      tags: body.tags || '',
+      featuredImage: featuredImage || body.image || '',
+      additionalImages: additionalImages,
+      slug
+    }
+
+    const resp = await fetch(`${request.nextUrl.origin}/api/wordpress/publish-via-plugin`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(pluginPayload)
+    })
+
+    const text = await resp.text()
+    let wordpressResult: any = null
+    try {
+      wordpressResult = JSON.parse(text)
+    } catch (e) {
+      return NextResponse.json(
+        { 
+          error: 'Plugin trả về dữ liệu không hợp lệ', 
+          raw: text,
+          warning: 'Không thể lưu tin tức do lỗi từ WordPress plugin.'
+        },
+        { status: 502 }
+      )
+    }
+
+    if (!resp.ok || !wordpressResult?.success) {
+      return NextResponse.json(
+        { 
+          error: wordpressResult?.error || 'Không thể đăng bài qua plugin', 
+          details: wordpressResult,
+          warning: 'Tin tức không được lưu do lỗi WordPress. Vui lòng thử lại.'
+        },
+        { status: 502 }
+      )
+    }
+
+    // Lấy thông tin user từ session để gán author
+    let authorName = 'Admin LTA'
+    try {
+      const session = await getServerSession(authOptions)
+      if (session?.user?.name) authorName = session.user.name
+      else if (session?.user?.email) authorName = session.user.email
+    } catch {}
+
+    // Create news item for local storage
+    const newsItem: NewsItem = {
+      id: `wp_${wordpressResult.data?.id || ''}`,
+      title: body.title,
+      slug,
+      excerpt: body.excerpt,
+      content: body.content,
       status: body.status || 'draft',
       featured: body.featured || false,
-      metaTitle: body.metaTitle,
-      metaDescription: body.metaDescription,
-      category: body.category,
-      tags: body.tags,
-      featuredImage: featuredImage,
-      additionalImages: additionalImages,
-      image: image,
+      category: body.category || '',
+      tags: body.tags || '',
+      featuredImage: featuredImage || body.image || '',
+      additionalImages,
+      image: featuredImage || body.image || '',
       imageAlt: body.imageAlt || body.title,
-      relatedImages: body.relatedImages || [], // Chỉ sử dụng relatedImages được gửi từ client
-      author: body.author || 'Admin LTA',
+      author: body.author || authorName,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
-      publishedAt: body.status === 'published' ? new Date().toISOString() : undefined,
-      wordpressId: body.wordpressId,
-      syncedToWordPress: false, // Sẽ được cập nhật sau khi sync
-      lastSyncDate: undefined
+      publishedAt: (body.status === 'published') ? new Date().toISOString() : undefined,
+      wordpressId: wordpressResult.data?.id,
+      syncedToWordPress: true,
+      lastSyncDate: new Date().toISOString()
     }
 
-    // Lưu vào local database
-    const currentNews = loadNews()
-    currentNews.push(newNews)
-    saveNews(currentNews)
+    // Save to local storage
+    const news = loadNews()
+    news.push(newsItem)
+    saveNews(news)
 
-    console.log('✅ News saved to local database:', newNews.id)
-
-    // Tự động đồng bộ lên WordPress sử dụng auto sync mới
-    try {
-      const wordpressConfig = getWordPressConfig()
-      if (wordpressConfig && wordpressConfig.isConnected && wordpressConfig.autoPublish) {
-        console.log('🔄 Auto-syncing to WordPress using new method...')
-        
-        // Chuẩn bị dữ liệu để sync
-        const syncData = {
-          title: newNews.title,
-          content: newNews.content,
-          excerpt: newNews.excerpt,
-          status: newNews.status === 'published' ? 'publish' : 'draft',
-          author: newNews.author,
-          category: newNews.category || '',
-          tags: newNews.tags || ''
-        }
-
-        // Sử dụng auto sync mới
-        const syncResponse = await fetch(`${request.nextUrl.origin}/api/wordpress/auto-sync`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(syncData)
-        })
-
-        if (syncResponse.ok) {
-          const syncResult = await syncResponse.json()
-          if (syncResult.success) {
-            // Cập nhật trạng thái sync
-            newNews.syncedToWordPress = true
-            newNews.lastSyncDate = new Date().toISOString()
-            if (syncResult.data && syncResult.data.id) {
-              newNews.wordpressId = syncResult.data.id
-            }
-            
-            // Lưu lại với thông tin sync
-            const updatedNews = loadNews()
-            const newsIndex = updatedNews.findIndex(item => item.id === newNews.id)
-            if (newsIndex !== -1) {
-              updatedNews[newsIndex] = newNews
-              saveNews(updatedNews)
-            }
-            
-            console.log('✅ Auto-sync to WordPress successful')
-          } else {
-            console.log('⚠️ Auto-sync to WordPress failed:', syncResult.error)
-          }
-        } else {
-          console.log('⚠️ Auto-sync to WordPress failed:', syncResponse.status)
-        }
-      } else {
-        if (wordpressConfig?.restApiBlocked) {
-          console.log('ℹ️ Auto-sync disabled: WordPress REST API is blocked by hosting provider')
-          console.log('📧 Contact hosting provider: apisupport@xecurify.com')
-        } else {
-          console.log('ℹ️ Auto-sync disabled or WordPress not connected')
-        }
-      }
-    } catch (syncError) {
-      console.error('❌ Error during auto-sync:', syncError)
-      // Không làm gián đoạn việc tạo tin tức nếu sync thất bại
-    }
-
+    console.log('✅ WordPress publish successful')
     return NextResponse.json({
       success: true,
-      message: 'Tin tức đã được tạo thành công',
-      data: newNews
+      message: 'Tin tức đã được đăng lên WordPress thành công',
+      data: newsItem
     })
 
   } catch (error) {
     console.error('Error creating news:', error)
     return NextResponse.json(
-      { error: 'Không thể tạo tin tức' },
+      { 
+        error: 'Không thể tạo tin tức',
+        details: error instanceof Error ? error.message : 'Unknown error',
+        warning: 'Vui lòng kiểm tra cấu hình và thử lại.'
+      },
       { status: 500 }
     )
   }
-} 
+}

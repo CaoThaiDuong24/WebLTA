@@ -37,6 +37,7 @@ import {
 } from '@/lib/image-utils'
 import { fileToDataUrlWithCompression, validateFile } from '@/lib/upload-utils'
 import { QuillEditor } from '@/components/ui/quill-editor'
+import { useSession } from 'next-auth/react'
 
 // Schema validation
 const newsSchema = z.object({
@@ -67,6 +68,7 @@ interface WordPressConfig {
 export default function CreateNewsPage() {
   const router = useRouter()
   const { toast } = useToast()
+  const { data: session } = useSession()
   const [isLoading, setIsLoading] = useState(false)
   const [wordpressConfig, setWordpressConfig] = useState<WordPressConfig | null>(null)
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'success' | 'error'>('idle')
@@ -145,11 +147,17 @@ export default function CreateNewsPage() {
   }, [])
 
   const generateSlug = (title: string) => {
-    return title
+    if (!title) return ''
+    const withoutDiacritics = title
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/đ/g, 'd')
+      .replace(/Đ/g, 'D')
+    return withoutDiacritics
       .toLowerCase()
       .trim()
-      .replace(/[^ws-]/g, '')
-      .replace(/[s_-]+/g, '-')
+      .replace(/[^a-z0-9\s-]/g, '')
+      .replace(/[\s_-]+/g, '-')
       .replace(/^-+|-+$/g, '')
   }
 
@@ -320,7 +328,8 @@ export default function CreateNewsPage() {
         featuredImage: featuredImageUrl,
         additionalImages: additionalImageUrls,
         image: featuredImageUrl,
-        relatedImages: [] // Không tạo relatedImages tự động để tránh trùng lặp
+        relatedImages: [], // Không tạo relatedImages tự động để tránh trùng lặp
+        author: (session?.user?.name as string) || (session?.user?.email as string) || 'Admin'
       }
       
       const localResponse = await fetch('/api/news', {
@@ -338,24 +347,33 @@ export default function CreateNewsPage() {
       }
 
       const localResult = await localResponse.json()
-      console.log('✅ Local save successful:', localResult)
-      setSaveStatus('success')
-
-      // Step 3: Check auto-sync result
-      console.log('✅ News saved successfully')
+      console.log('📋 Save result:', localResult)
       
-      if (localResult.data.syncedToWordPress) {
+      if (localResponse.ok && localResult.success) {
+        setSaveStatus('success')
         setWordpressStatus('success')
         toast({
           title: "✅ Thành công!",
-          description: "Tin tức đã được lưu và tự động đồng bộ lên WordPress",
+          description: localResult.message || "Tin tức đã được đăng lên WordPress thành công",
         })
       } else {
+        setSaveStatus('error')
         setWordpressStatus('error')
+        
+        // Hiển thị cảnh báo chi tiết
+        const errorMessage = localResult.error || 'Lỗi không xác định'
+        const warningMessage = localResult.warning || 'Không thể lưu tin tức'
+        
         toast({
-          title: "⚠️ Lưu thành công nhưng chưa sync WordPress",
-          description: "Tin tức đã được lưu. Vui lòng sync thủ công hoặc liên hệ hosting provider để enable REST API.",
+          title: "❌ Không thể lưu tin tức",
+          description: `${errorMessage}. ${warningMessage}`,
+          variant: "destructive",
         })
+        
+        // Hiển thị thông tin chi tiết trong console
+        if (localResult.details) {
+          console.error('🔍 Chi tiết lỗi:', localResult.details)
+        }
       }
       
       // Redirect sau khi hoàn thành
@@ -431,18 +449,7 @@ export default function CreateNewsPage() {
       </div>
 
       {/* WordPress Status Alert */}
-      {wordpressConfig && (
-        <Alert className={`border-${wordpressConfig.restApiBlocked ? 'orange' : 'green'}-200 bg-${wordpressConfig.restApiBlocked ? 'orange' : 'green'}-50`}>
-          <Globe className={`h-4 w-4 text-${wordpressConfig.restApiBlocked ? 'orange' : 'green'}-600`} />
-          <AlertDescription>
-            <strong>WordPress Status:</strong> {
-              wordpressConfig.restApiBlocked 
-                ? 'REST API bị chặn. Sử dụng đồng bộ thủ công.' 
-                : 'REST API hoạt động. Auto sync sẵn sàng.'
-            }
-          </AlertDescription>
-        </Alert>
-      )}
+      {/* REST API status removed. We use plugin-based sync. */}
 
       {/* Form */}
       <form 

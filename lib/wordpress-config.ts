@@ -1,13 +1,69 @@
 import { decryptSensitiveData, encryptSensitiveData, sanitizeForLog } from './security'
+import fs from 'fs'
+import path from 'path'
 
 export interface WordPressConfig {
   siteUrl: string
   username: string
   applicationPassword: string
+  isConnected?: boolean
+  autoPublish?: boolean
+  restApiBlocked?: boolean
+  lastSyncDate?: string | null
+  syncMethod?: string
+  createdAt?: string
+  updatedAt?: string
+  db?: {
+    host?: string
+    user?: string
+    password?: string
+    database?: string
+    port?: number
+    tablePrefix?: string
+  }
 }
 
 export function getWordPressConfig(): WordPressConfig | null {
-  // Try environment variables first
+  const configFile = path.join(process.cwd(), 'data', 'wordpress-config.json')
+  
+  // Try to read from JSON file first
+  if (fs.existsSync(configFile)) {
+    try {
+      const configData = fs.readFileSync(configFile, 'utf8')
+      const config = JSON.parse(configData)
+      // Decrypt sensitive fields if needed
+      const decryptIfPrefixed = (value: any) => {
+        if (typeof value === 'string' && value.startsWith('ENCRYPTED:')) {
+          try {
+            return decryptSensitiveData(value.replace('ENCRYPTED:', ''))
+          } catch {
+            return value
+          }
+        }
+        return value
+      }
+      const normalized: WordPressConfig = {
+        ...config,
+        username: decryptIfPrefixed(config.username),
+        applicationPassword: decryptIfPrefixed(config.applicationPassword),
+        db: config.db ? {
+          ...config.db,
+          user: decryptIfPrefixed(config.db.user),
+          password: decryptIfPrefixed(config.db.password),
+        } : undefined,
+      }
+      try {
+        console.log('WordPress config loaded from file:', sanitizeForLog(JSON.stringify(normalized)))
+      } catch {
+        console.log('WordPress config loaded from file: (masked)')
+      }
+      return normalized
+    } catch (error) {
+      console.error('Error reading WordPress config file:', error)
+    }
+  }
+
+  // Try environment variables as fallback
   const siteUrl = process.env.WORDPRESS_SITE_URL
   const username = process.env.WORDPRESS_USERNAME
   const applicationPassword = process.env.WORDPRESS_APPLICATION_PASSWORD
@@ -16,9 +72,14 @@ export function getWordPressConfig(): WordPressConfig | null {
     const config = {
       siteUrl,
       username,
-      applicationPassword
+      applicationPassword,
+      isConnected: false // Default to false for env config
     }
-    console.log('WordPress config loaded from env:', sanitizeForLog(config))
+    try {
+      console.log('WordPress config loaded from env:', sanitizeForLog(JSON.stringify(config)))
+    } catch {
+      console.log('WordPress config loaded from env (masked)')
+    }
     return config
   }
 
@@ -26,10 +87,53 @@ export function getWordPressConfig(): WordPressConfig | null {
   const fallbackConfig = {
     siteUrl: 'https://wp2.ltacv.com',
     username: 'admin',
-    applicationPassword: 'your-application-password'
+    applicationPassword: 'your-application-password',
+    isConnected: false
   }
-  console.log('WordPress config using fallback:', sanitizeForLog(fallbackConfig))
+  try {
+    console.log('WordPress config using fallback:', sanitizeForLog(JSON.stringify(fallbackConfig)))
+  } catch {
+    console.log('WordPress config using fallback (masked)')
+  }
   return fallbackConfig
+}
+
+export function saveWordPressConfig(config: WordPressConfig): void {
+  const configFile = path.join(process.cwd(), 'data', 'wordpress-config.json')
+  const configDir = path.dirname(configFile)
+  
+  // Create directory if it doesn't exist
+  if (!fs.existsSync(configDir)) {
+    fs.mkdirSync(configDir, { recursive: true })
+  }
+  
+  // Add timestamps
+  const configWithTimestamps = {
+    ...config,
+    updatedAt: new Date().toISOString(),
+    createdAt: config.createdAt || new Date().toISOString()
+  }
+
+  // Encrypt sensitive fields before saving
+  const ensureEncrypted = (value: any) => {
+    if (!value) return value
+    if (typeof value === 'string' && value.startsWith('ENCRYPTED:')) return value
+    if (typeof value === 'string') return `ENCRYPTED:${encryptSensitiveData(value)}`
+    return value
+  }
+  const toSave = {
+    ...configWithTimestamps,
+    username: ensureEncrypted(configWithTimestamps.username),
+    applicationPassword: ensureEncrypted(configWithTimestamps.applicationPassword),
+    db: configWithTimestamps.db ? {
+      ...configWithTimestamps.db,
+      user: ensureEncrypted(configWithTimestamps.db.user),
+      password: ensureEncrypted(configWithTimestamps.db.password),
+    } : undefined,
+  }
+
+  fs.writeFileSync(configFile, JSON.stringify(toSave, null, 2))
+  console.log('WordPress config saved to file')
 }
 
 export function encryptWordPressConfig(config: WordPressConfig): WordPressConfig {

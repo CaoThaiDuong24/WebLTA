@@ -27,7 +27,6 @@ export function UploadInfo() {
           setConfig(result.config)
         }
       } catch (error) {
-        console.error('Error loading upload config:', error)
       } finally {
         setLoading(false)
       }

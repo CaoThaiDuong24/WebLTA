@@ -13,9 +13,8 @@ export function SessionRefresh() {
     const refreshInterval = setInterval(async () => {
       try {
         await update()
-        console.log('Session refreshed automatically')
       } catch (error) {
-        console.error('Failed to refresh session:', error)
+        // swallow to avoid noisy logs in client
       }
     }, 12 * 60 * 60 * 1000) // 12 hours
 

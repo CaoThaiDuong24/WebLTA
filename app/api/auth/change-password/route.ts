@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import bcrypt from 'bcryptjs'
 import fs from 'fs'
 import path from 'path'
+import { encryptSensitiveData } from '@/lib/security'
 
 const adminDataPath = path.join(process.cwd(), 'data', 'admin.json')
 
@@ -16,10 +17,24 @@ function readAdminData() {
   }
 }
 
-// Ghi dữ liệu admin vào file
+// Ghi dữ liệu admin vào file (giữ nguyên các trường nhạy cảm dưới dạng đã mã hóa nếu có)
 function writeAdminData(data: any) {
   try {
-    fs.writeFileSync(adminDataPath, JSON.stringify(data, null, 2))
+    // Nếu có các trường nhạy cảm dạng plain, thêm tiền tố ENCRYPTED khi lưu
+    const toSave = { ...data }
+    if (typeof toSave.email === 'string' && !toSave.email.startsWith('ENCRYPTED:')) {
+      toSave.email = `ENCRYPTED:${encryptSensitiveData(toSave.email)}`
+    }
+    if (typeof toSave.name === 'string' && !toSave.name.startsWith('ENCRYPTED:')) {
+      toSave.name = `ENCRYPTED:${encryptSensitiveData(toSave.name)}`
+    }
+    // password đã là bcrypt hash; vẫn có thể mã hóa lớp ngoài để không lưu plaintext hash
+    if (typeof toSave.password === 'string' && !toSave.password.startsWith('ENCRYPTED:')) {
+      toSave.password = `ENCRYPTED:${encryptSensitiveData(toSave.password)}`
+    }
+    toSave.encryption_enabled = true
+    toSave.security_version = '2.0'
+    fs.writeFileSync(adminDataPath, JSON.stringify(toSave, null, 2))
     return true
   } catch (error) {
     console.error('Error writing admin data:', error)

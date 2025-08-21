@@ -4,8 +4,173 @@ import bcrypt from 'bcryptjs'
 import fs from 'fs'
 import path from 'path'
 import { decryptSensitiveData, verifyPassword, sanitizeForLog } from './security'
+import mysql from 'mysql2/promise'
+import { getWpDbPool, getWpTablePrefix } from './wp-db'
+import { verifyWordPressPassword } from './wp-password'
 
-// Extend the built-in session types
+interface AdminData {
+  email: string
+  password: string
+  name: string
+}
+
+interface UserData {
+  id: number
+  user_login: string
+  user_email: string
+  user_pass: string
+  display_name: string
+  role: string
+  created_at: string
+  is_active?: boolean
+}
+
+// Hàm giải mã dữ liệu nếu đã mã hóa
+function decryptIfEncrypted(data: string): string {
+  if (data.startsWith('ENCRYPTED:')) {
+    try {
+      return decryptSensitiveData(data.replace('ENCRYPTED:', ''))
+    } catch (error) {
+      console.error('Failed to decrypt data:', error)
+      return data.replace('ENCRYPTED:', '')
+    }
+  }
+  return data
+}
+
+function getAdminData(): AdminData {
+  try {
+    const adminFile = path.join(process.cwd(), 'data', 'admin.json')
+    if (fs.existsSync(adminFile)) {
+      const data = fs.readFileSync(adminFile, 'utf8')
+      const adminData = JSON.parse(data)
+      
+      // Kiểm tra xem dữ liệu có được mã hóa không
+      if (adminData.encryption_enabled) {
+        return {
+          email: decryptIfEncrypted(adminData.email),
+          password: decryptIfEncrypted(adminData.password),
+          name: decryptIfEncrypted(adminData.name)
+        }
+      } else {
+        // Dữ liệu chưa mã hóa
+        return {
+          email: adminData.email,
+          password: adminData.password,
+          name: adminData.name
+        }
+      }
+    }
+  } catch (error) {
+    console.error('Error reading admin data:', error)
+  }
+  
+  // Fallback to default admin
+  return {
+    email: 'admin@lta.com',
+    password: '$2a$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', // password
+    name: 'LTA Admin'
+  }
+}
+
+function getUsersFromFile(): UserData[] {
+  try {
+    const usersFile = path.join(process.cwd(), 'data', 'users.json')
+    if (fs.existsSync(usersFile)) {
+      const data = fs.readFileSync(usersFile, 'utf8')
+      const users = JSON.parse(data)
+      
+      // Kiểm tra xem dữ liệu có được mã hóa không
+      if (users.length > 0 && users[0].security_version === "2.0") {
+        // Giải mã dữ liệu cho mỗi user
+        return users.map((user: any) => ({
+          ...user,
+          user_login: decryptIfEncrypted(user.user_login),
+          user_email: decryptIfEncrypted(user.user_email),
+          user_pass: decryptIfEncrypted(user.user_pass),
+          display_name: decryptIfEncrypted(user.display_name)
+        }))
+      } else {
+        // Dữ liệu chưa mã hóa
+        return users
+      }
+    }
+  } catch (error) {
+    console.error('Error reading users file:', error)
+  }
+  return []
+}
+
+export async function authenticateUser(credentials: { email: string; password: string }) {
+  try {
+    // Đọc dữ liệu admin từ file
+    const adminData = getAdminData()
+
+    // Kiểm tra email
+    if (credentials.email !== adminData.email) {
+      // Nếu không phải admin, kiểm tra WordPress via plugin
+      try {
+        const { getWordPressConfig } = require('@/lib/wordpress-config')
+        const config = getWordPressConfig()
+        
+        if (config?.siteUrl) {
+          // Try to authenticate via custom plugin authentication endpoint
+          const authEndpoint = `${config.siteUrl.replace(/\/$/, '')}/wp-json/lta/v1/auth`
+          const response = await fetch(authEndpoint, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              username: credentials.email,
+              password: credentials.password
+            })
+          })
+          
+          if (response.ok) {
+            const authData = await response.json()
+            if (authData.success && authData.user) {
+              const authResult = {
+                id: authData.user.ID,
+                email: authData.user.user_email,
+                name: authData.user.display_name,
+                role: authData.user.role
+              }
+              console.log('WordPress plugin authentication successful:', authResult)
+              return authResult
+            }
+          } else {
+            console.log('WordPress plugin auth failed:', response.status)
+          }
+        }
+      } catch (e) {
+        console.log('WordPress plugin auth error:', e)
+      }
+      
+      return null
+    }
+
+    // Kiểm tra password cho admin
+    const isPasswordValid = await bcrypt.compare(credentials.password, adminData.password)
+    
+    if (!isPasswordValid) {
+      console.log('Password verification failed for:', sanitizeForLog(credentials.email))
+      return null
+    }
+
+    return {
+      id: 'admin',
+      email: adminData.email,
+      name: adminData.name,
+      role: 'administrator'
+    }
+  } catch (error) {
+    console.error('Authentication error:', error)
+    return null
+  }
+}
+
+// Extend the built-in session types for NextAuth v5
 declare module "next-auth" {
   interface Session {
     user: {
@@ -30,44 +195,6 @@ declare module "next-auth/jwt" {
   }
 }
 
-// Đọc dữ liệu admin từ file
-function getAdminData() {
-  try {
-    const adminDataPath = path.join(process.cwd(), 'data', 'admin.json')
-    const data = fs.readFileSync(adminDataPath, 'utf8')
-    const adminData = JSON.parse(data)
-    
-    // Decrypt sensitive data
-    const decryptedData = {
-      ...adminData,
-      email: adminData.email.startsWith('ENCRYPTED:') ? 
-        decryptSensitiveData(adminData.email.replace('ENCRYPTED:', '')) : adminData.email,
-      password: adminData.password.startsWith('ENCRYPTED:') ? 
-        decryptSensitiveData(adminData.password.replace('ENCRYPTED:', '')) : adminData.password,
-      name: adminData.name.startsWith('ENCRYPTED:') ? 
-        decryptSensitiveData(adminData.name.replace('ENCRYPTED:', '')) : adminData.name,
-      passwordHistory: adminData.passwordHistory?.map((item: any) => ({
-        ...item,
-        password: item.password.startsWith('ENCRYPTED:') ? 
-          decryptSensitiveData(item.password.replace('ENCRYPTED:', '')) : item.password
-      })) || []
-    }
-    
-    console.log('Admin data loaded:', sanitizeForLog(decryptedData))
-    return decryptedData
-  } catch (error) {
-    console.error('Error reading admin data:', error)
-    // Fallback data nếu không đọc được file
-    return {
-      id: '1',
-      email: 'admin@lta.com',
-      password: '$2a$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', // password
-      name: 'Admin LTA',
-      role: 'admin'
-    }
-  }
-}
-
 export const authOptions: NextAuthOptions = {
   secret: process.env.NEXTAUTH_SECRET || 'lta-secret-key-2024-stable',
   providers: [
@@ -82,80 +209,58 @@ export const authOptions: NextAuthOptions = {
           return null
         }
 
-        // Đọc dữ liệu admin từ file
-        const adminData = getAdminData()
-
-        // Kiểm tra email
-        if (credentials.email !== adminData.email) {
-          return null
-        }
-
-        // Kiểm tra password
-        const isPasswordValid = await bcrypt.compare(credentials.password, adminData.password)
+        // Sử dụng hàm authenticateUser đã được tối ưu
+        const user = await authenticateUser(credentials)
         
-        if (!isPasswordValid) {
-          console.log('Password verification failed for:', sanitizeForLog(credentials.email))
-          return null
+        if (user) {
+          return {
+            id: user.id.toString(),
+            email: user.email,
+            name: user.name,
+            role: user.role
+          }
         }
 
-        return {
-          id: adminData.id,
-          email: adminData.email,
-          name: adminData.name,
-          role: adminData.role
-        }
+        return null
       }
     })
   ],
   session: {
     strategy: 'jwt',
-    maxAge: 365 * 24 * 60 * 60, // 365 days (1 year) - practically no timeout
-    updateAge: 24 * 60 * 60, // Update session every 24 hours
-  },
-  jwt: {
-    maxAge: 365 * 24 * 60 * 60, // 365 days (1 year) - practically no timeout
-  },
-  pages: {
-    signIn: '/admin/login'
+    maxAge: 30 * 24 * 60 * 60, // 30 days
+    updateAge: 24 * 60 * 60, // 24 hours
   },
   callbacks: {
-    async jwt({ token, user, trigger, session }) {
+    async jwt({ token, user }) {
       if (user) {
         token.role = user.role
-        token.id = user.id
       }
-      
-      // Handle session update
-      if (trigger === "update" && session) {
-        return { ...token, ...session.user }
-      }
-      
-      // Extend token expiration
-      token.exp = Math.floor(Date.now() / 1000) + (365 * 24 * 60 * 60) // 1 year
       return token
     },
     async session({ session, token }) {
-      if (token) {
+      if (token.role) {
         session.user.role = token.role
-        session.user.id = token.id as string
-        // Extend session expiration
-        session.expires = new Date(Date.now() + (365 * 24 * 60 * 60 * 1000)).toISOString()
       }
       return session
-    }
-  },
-  // Prevent automatic logout on tab switch
-  useSecureCookies: false,
-  cookies: {
-    sessionToken: {
-      name: `next-auth.session-token`,
-      options: {
-        httpOnly: true,
-        sameSite: 'lax',
-        path: '/',
-        secure: false,
-        maxAge: 365 * 24 * 60 * 60 // 1 year
+    },
+    // Force stable redirect base to avoid wrong port (e.g., 3001)
+    async redirect({ url, baseUrl }) {
+      const forcedBase = process.env.NEXTAUTH_URL || 'http://localhost:3000'
+      // Relative URLs -> attach to forced base
+      if (url.startsWith('/')) return forcedBase + url
+      try {
+        const target = new URL(url)
+        const allowedBases = new Set([baseUrl, forcedBase])
+        // Only allow redirects to our base; otherwise, fallback home
+        if (allowedBases.has(target.origin)) return url
+        return forcedBase
+      } catch {
+        return forcedBase
       }
     }
+  },
+  pages: {
+    signIn: '/admin/login',
+    error: '/admin/login',
   }
-} 
+}

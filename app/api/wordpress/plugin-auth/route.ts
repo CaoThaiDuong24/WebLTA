@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import fs from 'fs'
 import path from 'path'
+import { encryptSensitiveData, decryptSensitiveData } from '@/lib/security'
 
 const WORDPRESS_CONFIG_FILE_PATH = path.join(process.cwd(), 'data', 'wordpress-config.json')
 const PLUGIN_CONFIG_FILE_PATH = path.join(process.cwd(), 'data', 'plugin-config.json')
@@ -24,7 +25,12 @@ const getPluginConfig = () => {
   try {
     if (fs.existsSync(PLUGIN_CONFIG_FILE_PATH)) {
       const configData = fs.readFileSync(PLUGIN_CONFIG_FILE_PATH, 'utf8')
-      return JSON.parse(configData)
+      const cfg = JSON.parse(configData)
+      // Decrypt apiKey if encrypted
+      if (typeof cfg.apiKey === 'string' && cfg.apiKey.startsWith('ENCRYPTED:')) {
+        try { cfg.apiKey = decryptSensitiveData(cfg.apiKey.replace('ENCRYPTED:', '')) } catch {}
+      }
+      return cfg
     }
     return {
       apiKey: 'lta-plugin-key-' + Math.random().toString(36).substr(2, 9),
@@ -45,7 +51,12 @@ const savePluginConfig = (config: any) => {
     if (!fs.existsSync(dataDir)) {
       fs.mkdirSync(dataDir, { recursive: true })
     }
-    fs.writeFileSync(PLUGIN_CONFIG_FILE_PATH, JSON.stringify(config, null, 2))
+    // Encrypt apiKey before saving
+    const toSave = { ...config }
+    if (typeof toSave.apiKey === 'string' && !toSave.apiKey.startsWith('ENCRYPTED:')) {
+      toSave.apiKey = `ENCRYPTED:${encryptSensitiveData(toSave.apiKey)}`
+    }
+    fs.writeFileSync(PLUGIN_CONFIG_FILE_PATH, JSON.stringify(toSave, null, 2))
   } catch (error) {
     console.error('Error saving plugin config:', error)
     throw error

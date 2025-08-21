@@ -46,20 +46,7 @@ export function WordPressConfig() {
   const { toast } = useToast()
   const { settings, updateSetting, isLoading } = useSettings()
   
-  console.log('WordPressConfig - Current settings:', {
-    settings: settings ? {
-      wordpressSiteUrl: settings.wordpressSiteUrl,
-      wordpressUsername: settings.wordpressUsername,
-      wordpressApplicationPassword: settings.wordpressApplicationPassword ? '***' : 'empty',
-      wordpressAutoPublish: settings.wordpressAutoPublish,
-      wordpressDefaultCategory: settings.wordpressDefaultCategory,
-      wordpressDefaultTags: settings.wordpressDefaultTags,
-      wordpressFeaturedImageEnabled: settings.wordpressFeaturedImageEnabled,
-      wordpressExcerptLength: settings.wordpressExcerptLength,
-      wordpressStatus: settings.wordpressStatus
-    } : 'null',
-    isLoading
-  })
+  
   
   const [config, setConfig] = useState<WordPressConfig>({
     siteUrl: 'https://wp2.ltacv.com',
@@ -83,17 +70,6 @@ export function WordPressConfig() {
   // Load config from settings context
   useEffect(() => {
     if (settings && !isLoading) {
-      console.log('Loading WordPress config from settings:', {
-        wordpressSiteUrl: settings.wordpressSiteUrl,
-        wordpressUsername: settings.wordpressUsername,
-        wordpressApplicationPassword: settings.wordpressApplicationPassword ? '***' : 'empty',
-        wordpressAutoPublish: settings.wordpressAutoPublish,
-        wordpressDefaultCategory: settings.wordpressDefaultCategory,
-        wordpressDefaultTags: settings.wordpressDefaultTags,
-        wordpressFeaturedImageEnabled: settings.wordpressFeaturedImageEnabled,
-        wordpressExcerptLength: settings.wordpressExcerptLength,
-        wordpressStatus: settings.wordpressStatus
-      })
       
       setConfig({
         siteUrl: settings.wordpressSiteUrl || 'https://wp2.ltacv.com',
@@ -114,17 +90,7 @@ export function WordPressConfig() {
   const saveConfig = async () => {
     setIsSaving(true)
     try {
-      console.log('Saving WordPress config:', {
-        siteUrl: config.siteUrl,
-        username: config.username,
-        applicationPassword: config.applicationPassword ? '***' : 'empty',
-        autoPublish: config.autoPublish,
-        defaultCategory: config.defaultCategory,
-        defaultTags: config.defaultTags,
-        featuredImageEnabled: config.featuredImageEnabled,
-        excerptLength: config.excerptLength,
-        status: config.status
-      })
+      
       
       // Update each WordPress setting
       await updateSetting('wordpressSiteUrl', config.siteUrl)
@@ -167,7 +133,7 @@ export function WordPressConfig() {
         description: "Cấu hình WordPress API đã được lưu thành công.",
       })
     } catch (error) {
-      console.error('Error saving WordPress config:', error)
+      
       toast({
         title: "Lỗi lưu cấu hình",
         description: "Không thể lưu cấu hình WordPress API.",
@@ -182,11 +148,6 @@ export function WordPressConfig() {
   const testConnection = async () => {
     setIsTesting(true)
     try {
-      console.log('Testing connection with config:', {
-        siteUrl: config.siteUrl,
-        username: config.username,
-        applicationPassword: config.applicationPassword ? '***' : 'empty'
-      })
       
       const response = await fetch('/api/wordpress/test-connection', {
         method: 'POST',
@@ -201,7 +162,6 @@ export function WordPressConfig() {
       })
 
       const result = await response.json()
-      console.log('Test connection result:', result)
       
       if (response.ok) {
         setIsConnected(true)
@@ -219,7 +179,7 @@ export function WordPressConfig() {
         })
       }
     } catch (error) {
-      console.error('Test connection error:', error)
+      
       setIsConnected(false)
       toast({
         title: "Lỗi kết nối",
@@ -543,7 +503,7 @@ export function WordPressConfig() {
                 <Info className="h-4 w-4" />
                 <AlertDescription>
                   <strong>Lưu ý:</strong> Nếu REST API bị chặn, hệ thống sẽ tự động sử dụng các phương pháp thay thế. 
-                  Xem <a href="/WORDPRESS_ALTERNATIVE_SYNC_GUIDE.md" className="text-blue-600 underline" target="_blank">hướng dẫn chi tiết</a> để biết thêm thông tin.
+                  
                 </AlertDescription>
               </Alert>
             </CardContent>
