@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { getServerSession } from 'next-auth'
+import { authOptions } from '@/lib/auth'
 import fs from 'fs'
 import path from 'path'
 import { getWpDbPool, getWpTablePrefix } from '@/lib/wp-db'
@@ -141,7 +143,9 @@ export async function GET(request: NextRequest) {
               role: wpUser.role || wpUser.roles?.[0] || 'subscriber',
               created_at: wpUser.user_registered || wpUser.date || new Date().toISOString(),
               user_registered: wpUser.user_registered || wpUser.date,
-              is_active: true,
+              is_active: typeof wpUser?.meta?.is_active !== 'undefined' 
+                ? (String(wpUser.meta.is_active) === 'true' || String(wpUser.meta.is_active) === '1')
+                : true,
               avatar_url: null
             }))
             
@@ -217,7 +221,20 @@ export async function GET(request: NextRequest) {
       } catch (dbError: any) {
         console.log('🔗 WordPress DB fetch failed:', dbError.message)
         
-        // Final fallback: return empty array
+        // Fallback cuối: đọc từ local file nếu có
+        try {
+          const localUsers = getUsersFromFile()
+          if (Array.isArray(localUsers) && localUsers.length > 0) {
+            return NextResponse.json({
+              success: true,
+              users: localUsers,
+              count: localUsers.length,
+              source: 'local-file'
+            })
+          }
+        } catch {}
+
+        // Không có dữ liệu
         return NextResponse.json({
           success: true,
           users: [],
@@ -240,6 +257,15 @@ export async function GET(request: NextRequest) {
 
 export async function PATCH(request: NextRequest) {
   try {
+    // Yêu cầu đăng nhập admin
+    const session = await getServerSession(authOptions as any) as any
+    if (!session || session.user?.role !== 'administrator') {
+      return NextResponse.json(
+        { error: 'Không có quyền cập nhật trạng thái người dùng' },
+        { status: 403 }
+      )
+    }
+
     const body = await request.json()
     const { userId, is_active } = body
 
@@ -270,6 +296,15 @@ export async function PATCH(request: NextRequest) {
          })
         
         if (response.ok) {
+          // Cập nhật fallback file nếu tồn tại
+          try {
+            const users = getUsersFromFile()
+            if (Array.isArray(users) && users.length > 0) {
+              const updated = users.map(u => u.id === Number(userId) ? { ...u, is_active } : u)
+              saveUsersToFile(updated as any)
+            }
+          } catch {}
+
           return NextResponse.json({ 
             success: true, 
             message: `Đã ${is_active ? 'bật' : 'tắt'} quyền hoạt động cho người dùng`,
@@ -306,6 +341,15 @@ export async function PATCH(request: NextRequest) {
 
 export async function DELETE(request: NextRequest) {
   try {
+    // Yêu cầu đăng nhập admin
+    const session = await getServerSession(authOptions as any) as any
+    if (!session || session.user?.role !== 'administrator') {
+      return NextResponse.json(
+        { error: 'Không có quyền xoá người dùng' },
+        { status: 403 }
+      )
+    }
+
     const { searchParams } = new URL(request.url)
     const userId = searchParams.get('id')
 
@@ -341,6 +385,15 @@ export async function DELETE(request: NextRequest) {
          })
         
         if (response.ok) {
+          // Xoá khỏi file fallback nếu tồn tại
+          try {
+            const currentUsers = getUsersFromFile()
+            if (Array.isArray(currentUsers) && currentUsers.length > 0) {
+              const filtered = currentUsers.filter(u => Number(u.id) !== userIdNum)
+              saveUsersToFile(filtered as any)
+            }
+          } catch {}
+
           return NextResponse.json({ 
             success: true, 
             message: 'Đã xóa người dùng thành công trên WordPress',

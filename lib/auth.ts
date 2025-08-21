@@ -130,6 +130,33 @@ export async function authenticateUser(credentials: { email: string; password: s
           if (response.ok) {
             const authData = await response.json()
             if (authData.success && authData.user) {
+              // Check is_active via plugin users endpoint (deny login if inactive)
+              try {
+                const usersEndpoint = `${config.siteUrl.replace(/\/$/, '')}/wp-json/lta/v1/users`
+                const usersResp = await fetch(usersEndpoint, {
+                  method: 'GET',
+                  headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: 'Basic ' + Buffer.from(`${config.username}:${config.applicationPassword}`).toString('base64'),
+                  },
+                  signal: AbortSignal.timeout(15000)
+                })
+                if (usersResp.ok) {
+                  const usersJson = await usersResp.json()
+                  const usersArr = usersJson.users || []
+                  const matched = usersArr.find((u: any) => (u.ID || u.id) == authData.user.ID)
+                  const isActive = typeof matched?.meta?.is_active !== 'undefined'
+                    ? Boolean(matched.meta.is_active)
+                    : true
+                  if (!isActive) {
+                    console.log('WordPress user is inactive, denying login:', authData.user.user_email)
+                    return null
+                  }
+                }
+              } catch (e) {
+                // If meta cannot be checked, allow login to avoid false negatives
+              }
+
               const authResult = {
                 id: authData.user.ID,
                 email: authData.user.user_email,

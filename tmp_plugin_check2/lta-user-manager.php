@@ -121,15 +121,7 @@ function lta_get_users($request) {
     foreach ($users as $user) {
         $user_roles = $user->roles;
         $primary_role = !empty($user_roles) ? $user_roles[0] : 'subscriber';
-        // Default to active if meta not set
-        $raw_active = get_user_meta($user->ID, 'is_active', true);
-        if ($raw_active === '' || $raw_active === null) {
-            $is_active = true;
-        } else if ($raw_active === '0' || $raw_active === 0) {
-            $is_active = false;
-        } else {
-            $is_active = filter_var($raw_active, FILTER_VALIDATE_BOOLEAN);
-        }
+        $is_active = get_user_meta($user->ID, 'is_active', true);
         
         $users_data[] = array(
             'ID' => $user->ID,
@@ -140,7 +132,7 @@ function lta_get_users($request) {
             'role' => $primary_role,
             'user_status' => $user->user_status,
             'meta' => array(
-                'is_active' => (bool)$is_active
+                'is_active' => $is_active === '0' || $is_active === 0 ? false : (bool)$is_active
             )
         );
     }
