@@ -12,6 +12,13 @@ export async function GET(request: NextRequest) {
       }, { status: 404 })
     }
 
+    // Log để debug - ẩn thông tin nhạy cảm
+    console.log('WordPress config API response:', {
+      ...config,
+      username: config.username ? '***' : 'empty',
+      applicationPassword: config.applicationPassword ? '***' : 'empty'
+    })
+
     return NextResponse.json({
       success: true,
       config: config

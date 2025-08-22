@@ -75,17 +75,24 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
     
-    // Nếu có WordPress config, lưu riêng và mã hóa
+    // Nếu có WordPress config, lưu riêng
     if (body.wordpressConfig) {
       saveWordPressConfig(body.wordpressConfig)
       console.log('✅ WordPress config saved to file')
       
-      // Mã hóa wordpressConfig trong settings
-      const { encryptSensitiveData } = await import('@/lib/security')
-      body.wordpressConfig = {
-        ...body.wordpressConfig,
-        username: body.wordpressConfig.username ? `ENCRYPTED:${encryptSensitiveData(body.wordpressConfig.username)}` : '',
-        applicationPassword: body.wordpressConfig.applicationPassword ? `ENCRYPTED:${encryptSensitiveData(body.wordpressConfig.applicationPassword)}` : ''
+      // Đọc dữ liệu đã mã hóa trực tiếp từ file thay vì qua getWordPressConfig
+      const fs = await import('fs')
+      const path = await import('path')
+      const configFile = path.join(process.cwd(), 'data', 'wordpress-config.json')
+      
+      if (fs.existsSync(configFile)) {
+        const fileData = JSON.parse(fs.readFileSync(configFile, 'utf8'))
+        body.wordpressConfig = {
+          ...fileData,
+          // Giữ nguyên dữ liệu đã mã hóa từ file
+          username: fileData.username,
+          applicationPassword: fileData.applicationPassword
+        }
       }
     }
     

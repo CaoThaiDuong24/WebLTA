@@ -44,6 +44,18 @@ interface SystemSettings {
   wordpressFeaturedImageEnabled: boolean
   wordpressExcerptLength: number
   wordpressStatus: 'draft' | 'publish' | 'private'
+  wordpressConfig?: {
+    siteUrl: string
+    username: string
+    applicationPassword: string
+    autoPublish: boolean
+    defaultCategory: string
+    defaultTags: string[]
+    featuredImageEnabled: boolean
+    excerptLength: number
+    status: 'draft' | 'publish' | 'private'
+    isConnected: boolean
+  }
   
   // Metadata
   lastUpdated?: string

@@ -74,6 +74,7 @@ export function WordPressConfig() {
         if (wpResponse.ok) {
           const wpConfig = await wpResponse.json()
           if (wpConfig.config) {
+            console.log('WordPress config loaded from file - Username:', wpConfig.config.username ? '***' : 'empty')
             setConfig({
               siteUrl: wpConfig.config.siteUrl || 'https://wp2.ltacv.com',
               username: wpConfig.config.username || '',
@@ -94,25 +95,76 @@ export function WordPressConfig() {
         console.log('Could not load WordPress config from file, falling back to settings context')
       }
 
-      // Fallback to settings context
+      // Fallback to settings context - kiểm tra cả wordpressConfig object
       if (settings && !isLoading) {
+        console.log('WordPress config loaded from settings context:', {
+          wordpressSiteUrl: settings.wordpressSiteUrl,
+          wordpressUsername: settings.wordpressUsername ? '***' : 'empty',
+          wordpressApplicationPassword: settings.wordpressApplicationPassword ? '***' : 'empty',
+          wordpressAutoPublish: settings.wordpressAutoPublish,
+          wordpressDefaultCategory: settings.wordpressDefaultCategory,
+          wordpressDefaultTags: settings.wordpressDefaultTags,
+          wordpressFeaturedImageEnabled: settings.wordpressFeaturedImageEnabled,
+          wordpressExcerptLength: settings.wordpressExcerptLength,
+          wordpressStatus: settings.wordpressStatus,
+          hasWordPressConfig: !!settings.wordpressConfig
+        })
+        
+        // Ưu tiên sử dụng wordpressConfig object nếu có
+        const wpConfig = settings.wordpressConfig || {}
         setConfig({
-          siteUrl: settings.wordpressSiteUrl || 'https://wp2.ltacv.com',
-          username: settings.wordpressUsername || '',
+          siteUrl: wpConfig.siteUrl || settings.wordpressSiteUrl || 'https://wp2.ltacv.com',
+          username: wpConfig.username || settings.wordpressUsername || '',
           password: '',
-          applicationPassword: settings.wordpressApplicationPassword || '',
-          autoPublish: settings.wordpressAutoPublish || false,
-          defaultCategory: settings.wordpressDefaultCategory || '',
-          defaultTags: settings.wordpressDefaultTags || [],
-          featuredImageEnabled: settings.wordpressFeaturedImageEnabled !== false,
-          excerptLength: settings.wordpressExcerptLength || 150,
-          status: (settings.wordpressStatus as 'draft' | 'publish' | 'private') || 'draft'
+          applicationPassword: wpConfig.applicationPassword || settings.wordpressApplicationPassword || '',
+          autoPublish: wpConfig.autoPublish !== undefined ? wpConfig.autoPublish : (settings.wordpressAutoPublish || false),
+          defaultCategory: wpConfig.defaultCategory || settings.wordpressDefaultCategory || '',
+          defaultTags: wpConfig.defaultTags || settings.wordpressDefaultTags || [],
+          featuredImageEnabled: wpConfig.featuredImageEnabled !== undefined ? wpConfig.featuredImageEnabled : (settings.wordpressFeaturedImageEnabled !== false),
+          excerptLength: wpConfig.excerptLength || settings.wordpressExcerptLength || 150,
+          status: (wpConfig.status || settings.wordpressStatus || 'draft') as 'draft' | 'publish' | 'private'
         })
       }
     }
 
     loadWordPressConfig()
   }, [settings, isLoading])
+
+     // Function to reload config
+   const reloadConfig = async () => {
+     try {
+       // Thêm timestamp để tránh cache và force reload
+       const wpResponse = await fetch('/api/wordpress/config?t=' + Date.now() + '&force=1', {
+         cache: 'no-store',
+         headers: {
+           'Cache-Control': 'no-cache, no-store, must-revalidate',
+           'Pragma': 'no-cache',
+           'Expires': '0'
+         }
+       })
+       if (wpResponse.ok) {
+         const wpConfig = await wpResponse.json()
+         if (wpConfig.config) {
+           console.log('Reloaded WordPress config - Username:', wpConfig.config.username ? '***' : 'empty')
+           setConfig({
+             siteUrl: wpConfig.config.siteUrl || 'https://wp2.ltacv.com',
+             username: wpConfig.config.username || '',
+             password: '',
+             applicationPassword: wpConfig.config.applicationPassword || '',
+             autoPublish: wpConfig.config.autoPublish || false,
+             defaultCategory: wpConfig.config.defaultCategory || '',
+             defaultTags: wpConfig.config.defaultTags || [],
+             featuredImageEnabled: wpConfig.config.featuredImageEnabled !== false,
+             excerptLength: wpConfig.config.excerptLength || 150,
+             status: (wpConfig.config.status as 'draft' | 'publish' | 'private') || 'draft'
+           })
+           setIsConnected(wpConfig.config.isConnected || false)
+         }
+       }
+     } catch (error) {
+       console.log('Could not reload WordPress config')
+     }
+   }
 
   // Save config to settings context and file
   const saveConfig = async () => {
@@ -143,26 +195,23 @@ export function WordPressConfig() {
         }),
       })
 
-      if (response.ok) {
-        // Update settings context với dữ liệu mới
-        await updateSetting('wordpressSiteUrl', config.siteUrl)
-        await updateSetting('wordpressUsername', config.username)
-        await updateSetting('wordpressApplicationPassword', config.applicationPassword)
-        await updateSetting('wordpressAutoPublish', config.autoPublish)
-        await updateSetting('wordpressDefaultCategory', config.defaultCategory)
-        await updateSetting('wordpressDefaultTags', config.defaultTags)
-        await updateSetting('wordpressFeaturedImageEnabled', config.featuredImageEnabled)
-        await updateSetting('wordpressExcerptLength', config.excerptLength)
-        await updateSetting('wordpressStatus', config.status)
-        
-        // Refresh settings context để đảm bảo dữ liệu được cập nhật
-        await refreshSettings()
-        
-        toast({
-          title: "Đã lưu cấu hình",
-          description: "Cấu hình WordPress API đã được lưu thành công.",
-        })
-      } else {
+             if (response.ok) {
+         // Đợi một chút để file được ghi xong
+         await new Promise(resolve => setTimeout(resolve, 500))
+         
+         // Reload với cache busting và force refresh
+         await reloadConfig()
+         
+         // Thêm một lần reload nữa để đảm bảo
+         setTimeout(async () => {
+           await reloadConfig()
+         }, 300)
+         
+         toast({
+           title: "Đã lưu cấu hình",
+           description: "Cấu hình WordPress API đã được lưu thành công và đã reload dữ liệu mới nhất.",
+         })
+       } else {
         throw new Error('Failed to save WordPress config')
       }
     } catch (error) {
@@ -263,19 +312,81 @@ export function WordPressConfig() {
           )}
         </div>
         
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={testConnection}
-          disabled={isTesting}
-        >
-          {isTesting ? (
-            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-          ) : (
-            <TestTube className="w-4 h-4 mr-2" />
-          )}
-          Kiểm tra kết nối
-        </Button>
+                 <div className="flex space-x-2">
+           <Button
+             variant="outline"
+             size="sm"
+             onClick={reloadConfig}
+           >
+             <RefreshCw className="w-4 h-4 mr-2" />
+             Reload
+           </Button>
+                       <Button
+              variant="outline"
+              size="sm"
+              onClick={async () => {
+                // Hard reload - reload trực tiếp từ file
+                const wpResponse = await fetch('/api/wordpress/config?hard=' + Date.now(), {
+                  cache: 'no-store',
+                  headers: {
+                    'Cache-Control': 'no-cache, no-store, must-revalidate',
+                    'Pragma': 'no-cache',
+                    'Expires': '0'
+                  }
+                })
+                if (wpResponse.ok) {
+                  const wpConfig = await wpResponse.json()
+                  if (wpConfig.config) {
+                    console.log('Hard reload - Username:', wpConfig.config.username ? '***' : 'empty')
+                    setConfig({
+                      siteUrl: wpConfig.config.siteUrl || 'https://wp2.ltacv.com',
+                      username: wpConfig.config.username || '',
+                      password: '',
+                      applicationPassword: wpConfig.config.applicationPassword || '',
+                      autoPublish: wpConfig.config.autoPublish || false,
+                      defaultCategory: wpConfig.config.defaultCategory || '',
+                      defaultTags: wpConfig.config.defaultTags || [],
+                      featuredImageEnabled: wpConfig.config.featuredImageEnabled !== false,
+                      excerptLength: wpConfig.config.excerptLength || 150,
+                      status: (wpConfig.config.status as 'draft' | 'publish' | 'private') || 'draft'
+                    })
+                    setIsConnected(wpConfig.config.isConnected || false)
+                    toast({
+                      title: "Đã hard reload",
+                      description: "Đã tải lại dữ liệu mới nhất từ file.",
+                    })
+                  }
+                }
+              }}
+            >
+              <RefreshCw className="w-4 h-4 mr-2" />
+              Hard Reload
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                // Refresh toàn bộ trang
+                window.location.reload()
+              }}
+            >
+              <RefreshCw className="w-4 h-4 mr-2" />
+              Refresh Page
+            </Button>
+           <Button
+             variant="outline"
+             size="sm"
+             onClick={testConnection}
+             disabled={isTesting}
+           >
+             {isTesting ? (
+               <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+             ) : (
+               <TestTube className="w-4 h-4 mr-2" />
+             )}
+             Kiểm tra kết nối
+           </Button>
+         </div>
       </div>
 
       {/* Basic Configuration */}

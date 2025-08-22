@@ -105,6 +105,18 @@ export interface SystemSettings {
   wordpressFeaturedImageEnabled: boolean
   wordpressExcerptLength: number
   wordpressStatus: 'draft' | 'publish' | 'private'
+  wordpressConfig?: {
+    siteUrl: string
+    username: string
+    applicationPassword: string
+    autoPublish: boolean
+    defaultCategory: string
+    defaultTags: string[]
+    featuredImageEnabled: boolean
+    excerptLength: number
+    status: 'draft' | 'publish' | 'private'
+    isConnected: boolean
+  }
 
   // Contact / Google Apps Script
   googleAppsScriptUrl: string
@@ -136,19 +148,36 @@ export const loadSettings = (): SystemSettings => {
       contactRequestTimeoutMs: settings.contactRequestTimeoutMs ?? 10000,
     }
 
+    // Helper function to decrypt with double encryption check
+    const decryptWithDoubleCheck = (value: string) => {
+      if (!value?.startsWith('ENCRYPTED:')) return value
+      try {
+        const decrypted = decryptSensitiveData(value.replace('ENCRYPTED:', ''))
+        // Check if decrypted result still has ENCRYPTED prefix (double encryption)
+        if (decrypted.startsWith('ENCRYPTED:')) {
+          return decryptSensitiveData(decrypted.replace('ENCRYPTED:', ''))
+        }
+        return decrypted
+      } catch (error) {
+        console.error('Failed to decrypt value:', error)
+        return ''
+      }
+    }
+
     // Decrypt sensitive data
     const decryptedSettings = {
       ...normalized,
-      smtpUser: settings.smtpUser?.startsWith('ENCRYPTED:') ? 
-        decryptSensitiveData(settings.smtpUser.replace('ENCRYPTED:', '')) : settings.smtpUser,
-      smtpPass: settings.smtpPass?.startsWith('ENCRYPTED:') ? 
-        decryptSensitiveData(settings.smtpPass.replace('ENCRYPTED:', '')) : settings.smtpPass,
-      wordpressUsername: settings.wordpressUsername?.startsWith('ENCRYPTED:') ? 
-        decryptSensitiveData(settings.wordpressUsername.replace('ENCRYPTED:', '')) : settings.wordpressUsername,
-      wordpressApplicationPassword: settings.wordpressApplicationPassword?.startsWith('ENCRYPTED:') ? 
-        decryptSensitiveData(settings.wordpressApplicationPassword.replace('ENCRYPTED:', '')) : settings.wordpressApplicationPassword,
-      googleAppsScriptUrl: settings.googleAppsScriptUrl?.startsWith('ENCRYPTED:') ?
-        decryptSensitiveData(settings.googleAppsScriptUrl.replace('ENCRYPTED:', '')) : settings.googleAppsScriptUrl,
+      smtpUser: decryptWithDoubleCheck(settings.smtpUser),
+      smtpPass: decryptWithDoubleCheck(settings.smtpPass),
+      wordpressUsername: decryptWithDoubleCheck(settings.wordpressUsername),
+      wordpressApplicationPassword: decryptWithDoubleCheck(settings.wordpressApplicationPassword),
+      googleAppsScriptUrl: decryptWithDoubleCheck(settings.googleAppsScriptUrl),
+      // Decrypt wordpressConfig object if it exists
+      wordpressConfig: settings.wordpressConfig ? {
+        ...settings.wordpressConfig,
+        username: decryptWithDoubleCheck(settings.wordpressConfig.username),
+        applicationPassword: decryptWithDoubleCheck(settings.wordpressConfig.applicationPassword),
+      } : undefined,
     }
     
     try {
@@ -176,6 +205,12 @@ export const saveSettings = (settings: SystemSettings): void => {
       wordpressUsername: settings.wordpressUsername ? `ENCRYPTED:${encryptSensitiveData(settings.wordpressUsername)}` : '',
       wordpressApplicationPassword: settings.wordpressApplicationPassword ? `ENCRYPTED:${encryptSensitiveData(settings.wordpressApplicationPassword)}` : '',
       googleAppsScriptUrl: settings.googleAppsScriptUrl ? `ENCRYPTED:${encryptSensitiveData(settings.googleAppsScriptUrl)}` : '',
+      // Encrypt wordpressConfig object if it exists
+      wordpressConfig: settings.wordpressConfig ? {
+        ...settings.wordpressConfig,
+        username: settings.wordpressConfig.username ? `ENCRYPTED:${encryptSensitiveData(settings.wordpressConfig.username)}` : '',
+        applicationPassword: settings.wordpressConfig.applicationPassword ? `ENCRYPTED:${encryptSensitiveData(settings.wordpressConfig.applicationPassword)}` : '',
+      } : undefined,
       lastUpdated: new Date().toISOString(),
       updatedBy: 'admin'
     }

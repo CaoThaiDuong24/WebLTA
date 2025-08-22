@@ -35,11 +35,21 @@ export function getWordPressConfig(): WordPressConfig | null {
       const decryptIfPrefixed = (value: any) => {
         if (typeof value === 'string' && value.startsWith('ENCRYPTED:')) {
           try {
-            return decryptSensitiveData(value.replace('ENCRYPTED:', ''))
-          } catch {
-            return value
+            const decrypted = decryptSensitiveData(value.replace('ENCRYPTED:', ''))
+            console.log('✅ Decrypted successfully')
+            // Check if decrypted result still has ENCRYPTED prefix (double encryption)
+            if (decrypted.startsWith('ENCRYPTED:')) {
+              console.log('⚠️ Double encryption detected, decrypting again...')
+              return decryptSensitiveData(decrypted.replace('ENCRYPTED:', ''))
+            }
+            return decrypted
+          } catch (error) {
+            console.error('❌ Failed to decrypt value:', error.message)
+            // Return empty string instead of encrypted value to avoid showing encrypted data on UI
+            return ''
           }
         }
+        // If not encrypted, return as is
         return value
       }
       const normalized: WordPressConfig = {
