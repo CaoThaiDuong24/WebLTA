@@ -149,7 +149,7 @@ export default function SettingsPage() {
           ...result.settings,
           wordpressApplicationPassword: result.settings.wordpressApplicationPassword ? '***' : 'empty'
         })
-        setSettings(prev => ({ ...prev, ...result.settings }))
+        setSettings(result.settings)
       } else {
         throw new Error('Failed to load settings')
       }
@@ -224,7 +224,7 @@ export default function SettingsPage() {
       
       if (response.ok) {
         const result = await response.json()
-        setSettings(prev => ({ ...prev, ...result.settings }))
+        setSettings(result.settings)
         toast({
           title: "Đã reset",
           description: result.message || "Cài đặt đã được khôi phục về mặc định",

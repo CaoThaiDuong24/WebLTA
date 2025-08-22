@@ -105,8 +105,8 @@ const resetSettings = (): SystemSettings => {
     googleAppsScriptUrl: '',
     contactRequestTimeoutMs: 10000
   }
-  saveSettings(defaultSettings)
-  return defaultSettings
+      saveSettingsToLib(defaultSettings)
+    return defaultSettings
 }
 
 export async function GET(request: NextRequest) {
