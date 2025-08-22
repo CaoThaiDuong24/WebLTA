@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { loadSettings as loadSettingsFromLib, saveSettings as saveSettingsToLib } from '@/lib/settings-storage'
+import { loadSettings, saveSettings, updateSetting, resetSettings } from '@/lib/settings-storage'
 import { saveWordPressConfig } from '@/lib/wordpress-config'
 
 interface SystemSettings {
@@ -53,65 +53,11 @@ interface SystemSettings {
   updatedBy?: string
 }
 
-// Cập nhật setting cụ thể
-const updateSetting = (key: keyof SystemSettings, value: any): SystemSettings => {
-  const currentSettings = loadSettingsFromLib() as any
-  const updatedSettings = {
-    ...currentSettings,
-    [key]: value,
-    lastUpdated: new Date().toISOString(),
-    updatedBy: 'admin'
-  } as any
-  saveSettingsToLib(updatedSettings)
-  return updatedSettings
-}
 
-// Reset settings về mặc định
-const resetSettings = (): SystemSettings => {
-  const defaultSettings: SystemSettings = {
-    siteName: 'LTA - Logistics Technology Application',
-    siteDescription: 'Ứng dụng công nghệ logistics hàng đầu Việt Nam',
-    siteUrl: 'https://lta.com.vn',
-    maintenanceMode: false,
-    smtpHost: 'smtp.gmail.com',
-    smtpPort: '587',
-    smtpUser: 'noreply@lta.com.vn',
-    smtpPass: '',
-    twoFactorAuth: false,
-    sessionTimeout: 0,
-    passwordPolicy: true,
-    loginAttempts: 5,
-    maxPasswordAge: 90,
-    requireSpecialChars: true,
-    lockoutDuration: 15,
-    enableAuditLog: true,
-    ipWhitelist: '',
-    sessionConcurrency: 1,
-    emailNotifications: true,
-    pushNotifications: false,
-    newsAlerts: true,
-    systemAlerts: true,
-    wordpressSiteUrl: 'https://wp2.ltacv.com',
-    wordpressUsername: '',
-    wordpressApplicationPassword: '',
-    wordpressAutoPublish: false,
-    wordpressDefaultCategory: '',
-    wordpressDefaultTags: [],
-    wordpressFeaturedImageEnabled: true,
-    wordpressExcerptLength: 150,
-    wordpressStatus: 'draft',
-
-    // Contact / Google Apps Script
-    googleAppsScriptUrl: '',
-    contactRequestTimeoutMs: 10000
-  }
-      saveSettingsToLib(defaultSettings)
-    return defaultSettings
-}
 
 export async function GET(request: NextRequest) {
   try {
-    const settings = loadSettingsFromLib()
+    const settings = loadSettings()
     return NextResponse.json({
       success: true,
       settings: settings
@@ -129,16 +75,24 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
     
-    // Nếu có WordPress config, lưu riêng
+    // Nếu có WordPress config, lưu riêng và mã hóa
     if (body.wordpressConfig) {
       saveWordPressConfig(body.wordpressConfig)
       console.log('✅ WordPress config saved to file')
+      
+      // Mã hóa wordpressConfig trong settings
+      const { encryptSensitiveData } = await import('@/lib/security')
+      body.wordpressConfig = {
+        ...body.wordpressConfig,
+        username: body.wordpressConfig.username ? `ENCRYPTED:${encryptSensitiveData(body.wordpressConfig.username)}` : '',
+        applicationPassword: body.wordpressConfig.applicationPassword ? `ENCRYPTED:${encryptSensitiveData(body.wordpressConfig.applicationPassword)}` : ''
+      }
     }
     
     // Lưu settings chung
-    const currentSettings = loadSettingsFromLib()
+    const currentSettings = loadSettings()
     const updatedSettings = { ...currentSettings, ...body }
-    saveSettingsToLib(updatedSettings)
+    saveSettings(updatedSettings)
     
     return NextResponse.json({
       success: true,

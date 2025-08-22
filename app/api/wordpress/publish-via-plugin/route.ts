@@ -1,28 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { getWordPressConfig } from '@/lib/wordpress-config'
+import { decryptSensitiveData } from '@/lib/security'
 import fs from 'fs'
 import path from 'path'
 
-const WORDPRESS_CONFIG_FILE_PATH = path.join(process.cwd(), 'data', 'wordpress-config.json')
 const PLUGIN_CONFIG_FILE_PATH = path.join(process.cwd(), 'data', 'plugin-config.json')
-
-const getWordPressConfig = () => {
-  try {
-    if (fs.existsSync(WORDPRESS_CONFIG_FILE_PATH)) {
-      const configData = fs.readFileSync(WORDPRESS_CONFIG_FILE_PATH, 'utf8')
-      return JSON.parse(configData)
-    }
-    return null
-  } catch (error) {
-    console.error('Error loading WordPress config:', error)
-    return null
-  }
-}
 
 const getPluginConfig = () => {
   try {
     if (fs.existsSync(PLUGIN_CONFIG_FILE_PATH)) {
       const configData = fs.readFileSync(PLUGIN_CONFIG_FILE_PATH, 'utf8')
-      return JSON.parse(configData)
+      const config = JSON.parse(configData)
+      
+      // Decrypt API key if needed
+      if (config.apiKey && config.apiKey.startsWith('ENCRYPTED:')) {
+        config.apiKey = decryptSensitiveData(config.apiKey.replace('ENCRYPTED:', ''))
+      }
+      
+      return config
     }
     return null
   } catch (error) {
@@ -35,7 +30,6 @@ export async function POST(request: NextRequest) {
   try {
     console.log('🚀 Publish via WP Plugin API called')
     const body = await request.json()
-    console.log('📦 Request body:', JSON.stringify(body, null, 2))
 
     const wordpressConfig = getWordPressConfig()
     const pluginConfig = getPluginConfig()
@@ -84,15 +78,48 @@ export async function POST(request: NextRequest) {
       authorUsername
     }
 
-    console.log('🔗 Calling WP Plugin AJAX URL:', ajaxUrl)
-
-    const response = await fetch(ajaxUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(payload)
-    })
+    // Retry logic với timeout tăng lên
+    let response: Response
+    let lastError: any = null
+    
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        console.log(`🔄 Attempt ${attempt}/3: Publishing to WordPress...`)
+        
+        response = await fetch(ajaxUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(payload),
+          // Tăng timeout lên 30 giây
+          signal: AbortSignal.timeout(30000)
+        })
+        
+        // Nếu thành công, thoát khỏi loop
+        break
+        
+      } catch (error) {
+        lastError = error
+        console.log(`❌ Attempt ${attempt} failed:`, error.message)
+        
+        if (attempt < 3) {
+          // Chờ 2 giây trước khi thử lại
+          await new Promise(resolve => setTimeout(resolve, 2000))
+        }
+      }
+    }
+    
+    // Nếu tất cả attempts đều thất bại
+    if (!response) {
+      return NextResponse.json(
+        { 
+          error: 'Không thể kết nối đến WordPress plugin sau 3 lần thử',
+          details: lastError?.message || 'Unknown error'
+        },
+        { status: 502 }
+      )
+    }
 
     const text = await response.text()
     let json: any = null

@@ -5,6 +5,7 @@ import fs from 'fs'
 import path from 'path'
 import { getWpDbPool, getWpTablePrefix } from '@/lib/wp-db'
 import { decryptSensitiveData, encryptSensitiveData } from '@/lib/security'
+import { getWordPressConfig } from '@/lib/wordpress-config'
 
 interface UserData {
   id: number
@@ -103,73 +104,79 @@ function saveUsersToFile(users: UserData[]) {
 
 export async function GET(request: NextRequest) {
   try {
-    console.log('📋 GET /api/users called - Fetching from WordPress')
+    console.log('🔄 Fetching users...')
     
-         // Try to get users from WordPress via custom plugin endpoint first
-     try {
-       const { getWordPressConfig } = require('@/lib/wordpress-config')
-       const config = getWordPressConfig()
-       
-       if (config?.siteUrl && config?.username && config?.applicationPassword) {
-         // Try custom plugin endpoint for getting users
-         const pluginEndpoint = `${config.siteUrl.replace(/\/$/, '')}/wp-json/lta/v1/users`
-         console.log('🔗 Calling WordPress plugin endpoint:', pluginEndpoint)
-         
-         const response = await fetch(pluginEndpoint, {
-           method: 'GET',
-           headers: {
-             'Content-Type': 'application/json',
-             Authorization: 'Basic ' + Buffer.from(`${config.username}:${config.applicationPassword}`).toString('base64'),
-           },
-           signal: AbortSignal.timeout(30000)
-         })
-         
-         console.log('🔗 WordPress plugin response status:', response.status)
-         
-                   if (response.ok) {
-            const wpResponse = await response.json()
-            console.log('🔗 Plugin response:', wpResponse)
-            
-            // Check if response has users array
-            const wpUsers = wpResponse.users || wpResponse || []
-            console.log('🔗 Found', wpUsers.length, 'users via plugin')
-            
-            // Convert WordPress users to admin format
-            const users = wpUsers.map((wpUser: any) => ({
-              id: wpUser.ID || wpUser.id,
-              user_login: wpUser.user_login || wpUser.slug,
-              user_email: wpUser.user_email || wpUser.email || '',
-              display_name: wpUser.display_name || wpUser.name || wpUser.user_login,
-              role: wpUser.role || wpUser.roles?.[0] || 'subscriber',
-              created_at: wpUser.user_registered || wpUser.date || new Date().toISOString(),
-              user_registered: wpUser.user_registered || wpUser.date,
-              is_active: typeof wpUser?.meta?.is_active !== 'undefined' 
-                ? (String(wpUser.meta.is_active) === 'true' || String(wpUser.meta.is_active) === '1')
-                : true,
-              avatar_url: null
-            }))
-            
-            return NextResponse.json({
-              success: true,
-              users: users,
-              count: users.length,
-              source: 'wordpress-plugin'
-            })
-         } else {
-           const errorText = await response.text()
-           console.log('🔗 WordPress plugin error:', errorText)
-           throw new Error(`WordPress plugin error: ${response.status} ${response.statusText}`)
-         }
-       } else {
-         console.log('🔗 Missing WordPress config for users fetch')
-         throw new Error('WordPress config incomplete')
-       }
-     } catch (wpError: any) {
-       console.log('🔗 WordPress plugin fetch failed:', wpError.message)
+    // Try to get users from WordPress first
+    try {
+      const config = getWordPressConfig()
+      
+      if (config?.siteUrl && config?.username && config?.applicationPassword) {
+        // Decrypt WordPress credentials
+        const decryptedUsername = config.username.startsWith('ENCRYPTED:') 
+          ? decryptSensitiveData(config.username.replace('ENCRYPTED:', ''))
+          : config.username
+        const decryptedPassword = config.applicationPassword.startsWith('ENCRYPTED:')
+          ? decryptSensitiveData(config.applicationPassword.replace('ENCRYPTED:', ''))
+          : config.applicationPassword
+        
+        // Try custom plugin endpoint for getting users
+        const pluginEndpoint = `${config.siteUrl.replace(/\/$/, '')}/wp-json/lta/v1/users`
+        console.log('🔗 Calling WordPress plugin endpoint:', pluginEndpoint)
+        
+        const response = await fetch(pluginEndpoint, {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: 'Basic ' + Buffer.from(`${decryptedUsername}:${decryptedPassword}`).toString('base64'),
+          },
+          signal: AbortSignal.timeout(30000)
+        })
+        
+        console.log('🔗 WordPress plugin response status:', response.status)
+        
+        if (response.ok) {
+          const wpResponse = await response.json()
+          console.log('🔗 Plugin response:', wpResponse)
+          
+          // Check if response has users array
+          const wpUsers = wpResponse.users || wpResponse || []
+          console.log('🔗 Found', wpUsers.length, 'users via plugin')
+          
+          // Convert WordPress users to admin format
+          const users = wpUsers.map((wpUser: any) => ({
+            id: wpUser.ID || wpUser.id,
+            user_login: wpUser.user_login || wpUser.slug,
+            user_email: wpUser.user_email || wpUser.email || '',
+            display_name: wpUser.display_name || wpUser.name || wpUser.user_login,
+            role: wpUser.role || wpUser.roles?.[0] || 'subscriber',
+            created_at: wpUser.user_registered || wpUser.date || new Date().toISOString(),
+            user_registered: wpUser.user_registered || wpUser.date,
+            is_active: typeof wpUser?.meta?.is_active !== 'undefined' 
+              ? (String(wpUser.meta.is_active) === 'true' || String(wpUser.meta.is_active) === '1')
+              : true,
+            avatar_url: null
+          }))
+          
+          return NextResponse.json({
+            success: true,
+            users: users,
+            count: users.length,
+            source: 'wordpress-plugin'
+          })
+        } else {
+          const errorText = await response.text()
+          console.log('🔗 WordPress plugin error:', errorText)
+          throw new Error(`WordPress plugin error: ${response.status} ${response.statusText}`)
+        }
+      } else {
+        console.log('🔗 Missing WordPress config for users fetch')
+        throw new Error('WordPress config incomplete')
+      }
+    } catch (wpError: any) {
+      console.log('🔗 WordPress plugin fetch failed:', wpError.message)
       
       // Fallback: Try to get users from WordPress database
       try {
-        const { getWpDbPool, getWpTablePrefix } = require('@/lib/wp-db')
         const pool = getWpDbPool()
         const prefix = getWpTablePrefix()
         
@@ -215,43 +222,179 @@ export async function GET(request: NextRequest) {
           success: true,
           users: users,
           count: users.length,
-          source: 'wordpress-db'
+          source: 'wordpress-database'
         })
         
       } catch (dbError: any) {
-        console.log('🔗 WordPress DB fetch failed:', dbError.message)
+        console.log('🔗 WordPress database fetch failed:', dbError.message)
         
-        // Fallback cuối: đọc từ local file nếu có
+        // Final fallback: Get users from local file
         try {
-          const localUsers = getUsersFromFile()
-          if (Array.isArray(localUsers) && localUsers.length > 0) {
+          const usersFile = path.join(process.cwd(), 'data', 'users.json')
+          
+          if (fs.existsSync(usersFile)) {
+            const usersData = fs.readFileSync(usersFile, 'utf8')
+            const users = JSON.parse(usersData)
+            
+            // Decrypt sensitive data for display
+            const decryptedUsers = users.map((user: any) => {
+              const decryptedUser = { ...user }
+              
+              // Decrypt email if encrypted
+              if (user.user_email && user.user_email.startsWith('ENCRYPTED:')) {
+                try {
+                  decryptedUser.user_email = decryptSensitiveData(user.user_email.replace('ENCRYPTED:', ''))
+                } catch (e) {
+                  decryptedUser.user_email = '***@***.***'
+                }
+              }
+              
+              // Don't return password in any form
+              delete decryptedUser.user_pass
+              
+              return decryptedUser
+            })
+            
             return NextResponse.json({
               success: true,
-              users: localUsers,
-              count: localUsers.length,
+              users: decryptedUsers,
+              count: decryptedUsers.length,
               source: 'local-file'
             })
+          } else {
+            return NextResponse.json({
+              success: true,
+              users: [],
+              count: 0,
+              source: 'no-data'
+            })
           }
-        } catch {}
-
-        // Không có dữ liệu
-        return NextResponse.json({
-          success: true,
-          users: [],
-          count: 0,
-          source: 'none',
-          message: 'Không thể kết nối WordPress'
-        })
+        } catch (fileError: any) {
+          console.log('🔗 Local file fetch failed:', fileError.message)
+          throw new Error('All user fetch methods failed')
+        }
       }
     }
     
   } catch (error: any) {
     console.error('❌ Error fetching users:', error)
-    return NextResponse.json({
-      success: false,
-      error: 'Không thể tải danh sách người dùng',
-      details: error.message
-    }, { status: 500 })
+    return NextResponse.json(
+      { error: 'Failed to fetch users' },
+      { status: 500 }
+    )
+  }
+}
+
+export async function POST(request: NextRequest) {
+  try {
+    console.log('🔄 Creating new user...')
+    
+    const body = await request.json()
+    const { username, email, password, name, role } = body
+    
+    if (!username || !email || !password) {
+      return NextResponse.json(
+        { error: 'Missing required fields: username, email, password' },
+        { status: 400 }
+      )
+    }
+    
+    // Try to create user via WordPress plugin first
+    try {
+      const config = getWordPressConfig()
+      
+      if (config?.siteUrl && config?.username && config?.applicationPassword) {
+        // Decrypt WordPress credentials
+        const decryptedUsername = config.username.startsWith('ENCRYPTED:') 
+          ? decryptSensitiveData(config.username.replace('ENCRYPTED:', ''))
+          : config.username
+        const decryptedPassword = config.applicationPassword.startsWith('ENCRYPTED:')
+          ? decryptSensitiveData(config.applicationPassword.replace('ENCRYPTED:', ''))
+          : config.applicationPassword
+        
+        const pluginEndpoint = `${config.siteUrl.replace(/\/$/, '')}/wp-json/lta/v1/create-user`
+        console.log('🔗 Creating user via WordPress plugin...')
+        
+        const response = await fetch(pluginEndpoint, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: 'Basic ' + Buffer.from(`${decryptedUsername}:${decryptedPassword}`).toString('base64'),
+          },
+          body: JSON.stringify({ username, email, password, name, role })
+        })
+        
+        if (response.ok) {
+          const data = await response.json()
+          if (data?.success) {
+            console.log('✅ User created via WordPress plugin')
+            return NextResponse.json({
+              success: true,
+              message: 'User created successfully via WordPress',
+              userId: data.userId || data.id
+            })
+          }
+        }
+      }
+    } catch (error: any) {
+      console.log('❌ WordPress plugin creation failed:', error.message)
+    }
+    
+    // Fallback: Create user in local file
+    try {
+      const usersFile = path.join(process.cwd(), 'data', 'users.json')
+      let users = []
+      
+      if (fs.existsSync(usersFile)) {
+        const usersData = fs.readFileSync(usersFile, 'utf8')
+        users = JSON.parse(usersData)
+      }
+      
+      // Check for duplicates
+      if (users.some((u: any) => u.user_login === username)) {
+        return NextResponse.json({ error: 'Username already exists' }, { status: 409 })
+      }
+      if (users.some((u: any) => u.user_email === email)) {
+        return NextResponse.json({ error: 'Email already exists' }, { status: 409 })
+      }
+      
+      const newUser = {
+        id: Date.now(),
+        user_login: username,
+        user_email: email,
+        display_name: name || username,
+        role: role || 'subscriber',
+        created_at: new Date().toISOString(),
+        is_active: true
+      }
+      
+      users.push(newUser)
+      
+      const dataDir = path.dirname(usersFile)
+      if (!fs.existsSync(dataDir)) {
+        fs.mkdirSync(dataDir, { recursive: true })
+      }
+      
+      fs.writeFileSync(usersFile, JSON.stringify(users, null, 2))
+      
+      console.log('✅ User created in local file')
+      return NextResponse.json({
+        success: true,
+        message: 'User created successfully in local file',
+        userId: newUser.id
+      })
+      
+    } catch (error: any) {
+      console.error('❌ Local file creation failed:', error)
+      throw new Error('Failed to create user')
+    }
+    
+  } catch (error: any) {
+    console.error('❌ Error creating user:', error)
+    return NextResponse.json(
+      { error: 'Failed to create user' },
+      { status: 500 }
+    )
   }
 }
 

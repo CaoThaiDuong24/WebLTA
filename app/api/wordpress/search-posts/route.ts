@@ -32,11 +32,8 @@ export async function GET(request: NextRequest) {
     searchParamsObj.append('status', status)
     searchParamsObj.append('_embed', '1') // Lấy thêm thông tin media
 
-    console.log(`🔍 Searching WordPress with query: "${query}"`)
-
     // Gọi WordPress REST API
     const apiUrl = `${siteUrl}/wp-json/wp/v2/posts?${searchParamsObj.toString()}`
-    console.log(`📡 Fetching from: ${apiUrl}`)
 
     try {
       const response = await fetch(apiUrl, {
@@ -54,12 +51,20 @@ export async function GET(request: NextRequest) {
       }
 
       const posts = await response.json()
-      console.log(`✅ Found ${posts.length} posts from WordPress`)
 
       // Transform posts to our format
       const transformedPosts = posts.map((post: any) => {
         const featuredImage = post._embedded?.['wp:featuredmedia']?.[0]?.source_url || ''
-        const author = post._embedded?.author?.[0]?.name || 'Admin'
+        
+        // Xử lý thông tin tác giả
+        let author = 'Admin LTA'
+        if (post._embedded?.author?.[0]?.name) {
+          author = post._embedded.author[0].name
+        } else if (post._embedded?.author?.[0]?.display_name) {
+          author = post._embedded.author[0].display_name
+        } else if (post._embedded?.author?.[0]?.user_nicename) {
+          author = post._embedded.author[0].user_nicename
+        }
         
         return {
           id: post.id,

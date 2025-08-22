@@ -4,6 +4,7 @@ import path from 'path'
 import { hashWordPressPassword } from '@/lib/wp-password'
 import { getWpDbPool, getWpTablePrefix } from '@/lib/wp-db'
 import { getWordPressConfig } from '@/lib/wordpress-config'
+import { encryptSensitiveData, decryptSensitiveData } from '@/lib/security'
 
 function slugify(input: string): string {
   return input
@@ -20,12 +21,12 @@ export async function POST(request: NextRequest) {
   console.log('🚀 POST /api/users/create called')
   
   try {
-    const contentType = request.headers.get('content-type') || ''
-    console.log('🔍 Content-Type:', contentType)
+    console.log('🔄 Creating new user...')
     
     let username: string, email: string, password: string, name: string, role: string, avatarFile: any = null
     
-    if (contentType.includes('multipart/form-data')) {
+    // Xử lý form data
+    if (request.headers.get('content-type')?.includes('multipart/form-data')) {
       const formData = await request.formData()
       username = (formData.get('username') as string) || ''
       email = (formData.get('email') as string) || ''
@@ -33,7 +34,6 @@ export async function POST(request: NextRequest) {
       name = (formData.get('name') as string) || ''
       role = (formData.get('role') as string) || 'subscriber'
       avatarFile = formData.get('avatar')
-      console.log('📝 FormData received:', { username, email, name, role, hasAvatar: !!avatarFile })
     } else {
       const body = await request.json()
       username = body.username || ''
@@ -41,9 +41,9 @@ export async function POST(request: NextRequest) {
       password = body.password || ''
       name = body.name || ''
       role = body.role || 'subscriber'
-      console.log('📝 JSON received:', { username, email, name, role })
     }
     
+    // Validation
     if (!username || !email || !password) {
       return NextResponse.json(
         { error: 'Thiếu thông tin: username, email, password là bắt buộc' },
@@ -51,35 +51,79 @@ export async function POST(request: NextRequest) {
       )
     }
     
-    // Tạo username hợp lệ từ tên nếu username có ký tự đặc biệt
-    let validUsername = username
-    if (username.includes(' ') || /[^a-zA-Z0-9_-]/.test(username)) {
-      validUsername = slugify(username)
-      console.log('🔄 Converting username from', username, 'to', validUsername)
+    // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    if (!emailRegex.test(email)) {
+      return NextResponse.json(
+        { error: 'Email không hợp lệ' },
+        { status: 400 }
+      )
+    }
+    
+    // Validate password strength
+    if (password.length < 8) {
+      return NextResponse.json(
+        { error: 'Mật khẩu phải có ít nhất 8 ký tự' },
+        { status: 400 }
+      )
+    }
+    
+    // Sanitize username
+    const validUsername = username.toLowerCase().replace(/[^a-z0-9_-]/g, '')
+    if (validUsername !== username.toLowerCase()) {
+      return NextResponse.json(
+        { error: 'Username chỉ được chứa chữ cái, số, dấu gạch ngang và gạch dưới' },
+        { status: 400 }
+      )
+    }
+    
+    // Load existing users
+    const usersFile = path.join(process.cwd(), 'data', 'users.json')
+    let users = []
+    
+    if (fs.existsSync(usersFile)) {
+      const usersData = fs.readFileSync(usersFile, 'utf8')
+      users = JSON.parse(usersData)
+    }
+    
+    // Check for duplicates
+    if (users.some((u: any) => u.user_login === validUsername)) {
+      return NextResponse.json({ error: 'Username đã tồn tại' }, { status: 409 })
+    }
+    if (users.some((u: any) => u.user_email === email)) {
+      return NextResponse.json({ error: 'Email đã tồn tại' }, { status: 409 })
     }
     
     // Kiểm tra trùng lặp trên WordPress trước
     try {
       const config = getWordPressConfig()
       if (config?.siteUrl && config?.username && config?.applicationPassword) {
+        // Decrypt WordPress credentials
+        const decryptedUsername = config.username.startsWith('ENCRYPTED:') 
+          ? decryptSensitiveData(config.username.replace('ENCRYPTED:', ''))
+          : config.username
+        const decryptedPassword = config.applicationPassword.startsWith('ENCRYPTED:')
+          ? decryptSensitiveData(config.applicationPassword.replace('ENCRYPTED:', ''))
+          : config.applicationPassword
+        
         // Check if user exists via plugin endpoint
         const checkEndpoint = `${config.siteUrl.replace(/\/$/, '')}/wp-json/lta/v1/users`
         const checkResp = await fetch(checkEndpoint, {
           method: 'GET',
           headers: {
             'Content-Type': 'application/json',
-            Authorization: 'Basic ' + Buffer.from(`${config.username}:${config.applicationPassword}`).toString('base64'),
+            Authorization: 'Basic ' + Buffer.from(`${decryptedUsername}:${decryptedPassword}`).toString('base64'),
           }
         })
         
         if (checkResp.ok) {
           const existingUsers = await checkResp.json()
-          const users = existingUsers.users || existingUsers || []
+          const wpUsers = existingUsers.users || existingUsers || []
           
-          if (users.some((u: any) => u.user_login === validUsername)) {
+          if (wpUsers.some((u: any) => u.user_login === validUsername)) {
             return NextResponse.json({ error: 'Username đã tồn tại trên WordPress' }, { status: 409 })
           }
-          if (users.some((u: any) => u.user_email === email)) {
+          if (wpUsers.some((u: any) => u.user_email === email)) {
             return NextResponse.json({ error: 'Email đã tồn tại trên WordPress' }, { status: 409 })
           }
         }
@@ -117,11 +161,15 @@ export async function POST(request: NextRequest) {
     console.log('🕐 Vietnam time (UTC+7):', vietnamTime.toISOString())
     console.log('🕐 User registered time:', userRegistered)
     
+    // Encrypt sensitive data before saving
+    const encryptedPassword = encryptSensitiveData(password)
+    const encryptedEmail = encryptSensitiveData(email)
+    
     const newUser = {
       id: Date.now(),
       user_login: validUsername,
-      user_email: email,
-      user_pass: password, // Plain password for WordPress plugin
+      user_email: `ENCRYPTED:${encryptedEmail}`,
+      user_pass: `ENCRYPTED:${encryptedPassword}`, // Encrypted password
       display_name: name || username,
       user_nicename: slugify(name || username),
       role: role,
@@ -131,7 +179,7 @@ export async function POST(request: NextRequest) {
       avatar_media_id: null,
       is_active: true,
       created_at: createdAt,
-      security_version: "1.0"
+      security_version: "2.0" // Updated security version
     }
     
     // Chỉ sử dụng plugin REST API (nhanh nhất)
@@ -141,12 +189,20 @@ export async function POST(request: NextRequest) {
     try {
       const config = getWordPressConfig()
       if (config?.siteUrl && config?.username && config?.applicationPassword) {
+        // Decrypt WordPress credentials
+        const decryptedUsername = config.username.startsWith('ENCRYPTED:') 
+          ? decryptSensitiveData(config.username.replace('ENCRYPTED:', ''))
+          : config.username
+        const decryptedPassword = config.applicationPassword.startsWith('ENCRYPTED:')
+          ? decryptSensitiveData(config.applicationPassword.replace('ENCRYPTED:', ''))
+          : config.applicationPassword
+        
         const pluginEndpoint = `${config.siteUrl.replace(/\/$/, '')}/wp-json/lta/v1/create-user`
         const resp = await fetch(pluginEndpoint, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            Authorization: 'Basic ' + Buffer.from(`${config.username}:${config.applicationPassword}`).toString('base64'),
+            Authorization: 'Basic ' + Buffer.from(`${decryptedUsername}:${decryptedPassword}`).toString('base64'),
           },
           body: JSON.stringify({ username: validUsername, email, password, name, role })
         })
@@ -157,35 +213,50 @@ export async function POST(request: NextRequest) {
             createdIn = 'plugin'
             wordpressUserId = data.userId || data.id || null
             console.log('✅ User created via plugin:', wordpressUserId)
-          } else {
-            console.log('❌ Plugin response not successful:', data)
           }
-        } else {
-          const text = await resp.text().catch(() => '')
-          console.log('❌ Plugin request failed:', resp.status, text)
         }
       }
-    } catch (e) {
-      console.log('❌ Plugin request exception:', e)
+    } catch (error) {
+      console.log('❌ Failed to create user via plugin:', error)
     }
     
-    // Nếu plugin thất bại, trả về lỗi ngay lập tức
-    if (createdIn === 'file') {
-      return NextResponse.json({
-        success: false,
-        error: 'Không thể tạo người dùng trên WordPress. Vui lòng kiểm tra plugin và thử lại.'
-      }, { status: 502 })
+    // Add WordPress user ID if created successfully
+    if (wordpressUserId) {
+      newUser.wordpress_user_id = wordpressUserId
     }
-
-    console.log('✅ User created successfully:', newUser.id)
-
+    
+    // Add to local users array
+    users.push(newUser)
+    
+    // Save to file
+    const dataDir = path.dirname(usersFile)
+    if (!fs.existsSync(dataDir)) {
+      fs.mkdirSync(dataDir, { recursive: true })
+    }
+    
+    fs.writeFileSync(usersFile, JSON.stringify(users, null, 2))
+    
+    console.log('✅ User created successfully:', {
+      id: newUser.id,
+      username: validUsername,
+      email: email.replace(/./g, '*'), // Mask email in logs
+      role,
+      createdIn,
+      wordpressUserId
+    })
+    
     return NextResponse.json({
       success: true,
-      userId: wordpressUserId || newUser.id,
-      method: createdIn,
-      avatar_url: avatarUrl,
-      wordpress_avatar_url: null,
-      avatar_media_id: null
+      message: 'User created successfully',
+      user: {
+        id: newUser.id,
+        username: validUsername,
+        email: email.replace(/./g, '*'), // Don't return plain email
+        display_name: newUser.display_name,
+        role: newUser.role,
+        created_in: createdIn,
+        wordpress_user_id: wordpressUserId
+      }
     })
     
   } catch (error: any) {

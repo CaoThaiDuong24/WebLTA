@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
+import { decryptSensitiveData } from '@/lib/security'
 import fs from 'fs'
 import path from 'path'
 
@@ -108,7 +109,14 @@ const getPluginConfig = () => {
   try {
     if (fs.existsSync(PLUGIN_CONFIG_FILE_PATH)) {
       const configData = fs.readFileSync(PLUGIN_CONFIG_FILE_PATH, 'utf8')
-      return JSON.parse(configData)
+      const config = JSON.parse(configData)
+      
+      // Decrypt API key if needed
+      if (config.apiKey && config.apiKey.startsWith('ENCRYPTED:')) {
+        config.apiKey = decryptSensitiveData(config.apiKey.replace('ENCRYPTED:', ''))
+      }
+      
+      return config
     }
     return null
   } catch (error) {
@@ -150,25 +158,23 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Luôn đồng bộ với WordPress để đảm bảo dữ liệu chính xác
+    // Load local news data
     let news = loadNews()
-    console.log(`📋 Current local data: ${news.length} posts`)
     
+    // Chỉ đồng bộ với WordPress khi cần thiết (có thể thêm cache sau)
     try {
       const pluginConfig = getPluginConfig()
       if (pluginConfig?.apiKey) {
-        console.log('📡 Syncing with WordPress...')
-        
-        // Fetch posts from WordPress
+        // Fetch posts from WordPress với timeout
         const response = await fetch(`${request.nextUrl.origin}/api/wordpress/posts`, {
           method: 'GET',
-          headers: { 'Content-Type': 'application/json' }
+          headers: { 'Content-Type': 'application/json' },
+          signal: AbortSignal.timeout(10000) // 10 giây timeout
         })
 
         if (response.ok) {
           const result = await response.json()
           const wordpressPosts = result.data || []
-          console.log(`✅ Fetched ${wordpressPosts.length} posts from WordPress`)
           
           // Tạo map của WordPress posts để so sánh
           const wpPostMap = new Map()
@@ -179,18 +185,11 @@ export async function GET(request: NextRequest) {
           // Lọc local news, chỉ giữ lại những tin tức còn tồn tại ở WordPress
           const filteredNews = news.filter((localPost: any) => {
             const wpId = localPost.wordpressId || localPost.id?.replace('wp_', '')
-            const existsInWordPress = wpPostMap.has(parseInt(wpId))
-            
-            if (!existsInWordPress) {
-              console.log(`🗑️ Removing deleted post: ${localPost.title} (ID: ${wpId})`)
-            }
-            
-            return existsInWordPress
+            return wpPostMap.has(parseInt(wpId))
           })
           
           // Cập nhật local data nếu có thay đổi
           if (filteredNews.length !== news.length) {
-            console.log(`🔄 Updating local data: ${news.length} -> ${filteredNews.length} posts`)
             saveNews(filteredNews)
             news = filteredNews
           }
@@ -203,20 +202,14 @@ export async function GET(request: NextRequest) {
             )
             
             if (!existsInLocal) {
-              console.log(`➕ Adding new post from WordPress: ${wpPost.title} (ID: ${wpId})`)
               news.push(wpPost)
             }
           })
-          
-        } else {
-          console.log('❌ Failed to fetch from WordPress, using local data only')
         }
-      } else {
-        console.log('⚠️ No plugin config, using local data only')
       }
     } catch (wordpressError) {
-      console.error('❌ Error syncing with WordPress:', wordpressError)
-      console.log('📋 Using local data due to sync error')
+      // Sử dụng local data nếu có lỗi đồng bộ
+      console.log('Using local data due to sync error')
     }
     
     // Lọc theo trạng thái
@@ -234,12 +227,17 @@ export async function GET(request: NextRequest) {
       news = news.filter(item => item.featured)
     }
 
-    // Sắp xếp
-    news.sort(
-      (a, b) =>
-        new Date(b.publishedAt || b.updatedAt || b.createdAt).getTime() -
-        new Date(a.publishedAt || a.updatedAt || a.createdAt).getTime()
-    )
+    // Sắp xếp theo thứ tự mới nhất trước
+    news.sort((a, b) => {
+      const dateA = new Date(b.publishedAt || b.updatedAt || b.createdAt).getTime()
+      const dateB = new Date(a.publishedAt || a.updatedAt || a.createdAt).getTime()
+      return dateA - dateB
+    })
+
+    // Cập nhật local data với thứ tự đúng
+    if (news.length > 0) {
+      saveNews(news)
+    }
 
     // Phân trang
     const startIndex = (page - 1) * limit
@@ -317,37 +315,6 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Test WordPress connection first
-    console.log('🔍 Testing WordPress connection...')
-    try {
-      const testResponse = await fetch(`${request.nextUrl.origin}/api/wordpress/test-connection`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ config: pluginConfig })
-      })
-
-      if (!testResponse.ok) {
-        const testError = await testResponse.json()
-        return NextResponse.json(
-          { 
-            error: 'Không thể kết nối đến WordPress',
-            details: testError.error || 'Lỗi kết nối',
-            warning: 'Vui lòng kiểm tra cấu hình WordPress và thử lại.'
-          },
-          { status: 503 }
-        )
-      }
-    } catch (connectionError) {
-      return NextResponse.json(
-        { 
-          error: 'Lỗi kết nối đến WordPress',
-          details: connectionError instanceof Error ? connectionError.message : 'Unknown error',
-          warning: 'Vui lòng kiểm tra kết nối mạng và cấu hình WordPress.'
-        },
-        { status: 503 }
-      )
-    }
-
     // Publish to WordPress via plugin
     console.log('🔄 Publishing to WordPress via plugin...')
     
@@ -363,11 +330,46 @@ export async function POST(request: NextRequest) {
       slug
     }
 
-    const resp = await fetch(`${request.nextUrl.origin}/api/wordpress/publish-via-plugin`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(pluginPayload)
-    })
+    // Retry logic cho publish via plugin
+    let resp: Response
+    let lastError: any = null
+    
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      try {
+        console.log(`🔄 Attempt ${attempt}/2: Publishing via plugin...`)
+        
+        resp = await fetch(`${request.nextUrl.origin}/api/wordpress/publish-via-plugin`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(pluginPayload),
+          signal: AbortSignal.timeout(35000) // 35 giây timeout
+        })
+        
+        // Nếu thành công, thoát khỏi loop
+        break
+        
+      } catch (error) {
+        lastError = error
+        console.log(`❌ Attempt ${attempt} failed:`, error.message)
+        
+        if (attempt < 2) {
+          // Chờ 3 giây trước khi thử lại
+          await new Promise(resolve => setTimeout(resolve, 3000))
+        }
+      }
+    }
+    
+    // Nếu tất cả attempts đều thất bại
+    if (!resp) {
+      return NextResponse.json(
+        { 
+          error: 'Không thể đăng bài qua plugin sau 2 lần thử',
+          details: lastError?.message || 'Unknown error',
+          warning: 'Tin tức không được lưu do lỗi WordPress. Vui lòng thử lại.'
+        },
+        { status: 502 }
+      )
+    }
 
     const text = await resp.text()
     let wordpressResult: any = null
@@ -399,8 +401,13 @@ export async function POST(request: NextRequest) {
     let authorName = 'Admin LTA'
     try {
       const session = await getServerSession(authOptions)
-      if (session?.user?.name) authorName = session.user.name
-      else if (session?.user?.email) authorName = session.user.email
+      if (session?.user?.name) {
+        authorName = session.user.name
+      } else if (session?.user?.email) {
+        // Nếu chỉ có email, lấy phần trước @ làm tên
+        const email = session.user.email
+        authorName = email.split('@')[0]
+      }
     } catch {}
 
     // Create news item for local storage

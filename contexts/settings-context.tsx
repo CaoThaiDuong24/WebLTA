@@ -98,46 +98,51 @@ export function SettingsProvider({ children }: SettingsProviderProps) {
       setError(errorMessage)
       console.error('Error loading settings:', err)
       
-      // Fallback to default settings
-      const fallbackSettings = {
-        siteName: 'LTA - Logistics Technology Application',
-        siteDescription: 'Ứng dụng công nghệ logistics hàng đầu Việt Nam',
-        siteUrl: 'https://lta.com.vn',
-        maintenanceMode: false,
-        smtpHost: 'smtp.gmail.com',
-        smtpPort: '587',
-        smtpUser: 'noreply@lta.com.vn',
-        smtpPass: '',
-        twoFactorAuth: false,
-        sessionTimeout: 0, // No timeout - session never expires
-        passwordPolicy: true,
-        loginAttempts: 5,
-        maxPasswordAge: 90,
-        requireSpecialChars: true,
-        lockoutDuration: 15,
-        enableAuditLog: true,
-        ipWhitelist: '',
-        sessionConcurrency: 1,
-        emailNotifications: true,
-        pushNotifications: false,
-        newsAlerts: true,
-        systemAlerts: true,
-        wordpressSiteUrl: 'https://wp2.ltacv.com',
-        wordpressUsername: '',
-        wordpressApplicationPassword: '',
-        wordpressAutoPublish: false,
-        wordpressDefaultCategory: '',
-        wordpressDefaultTags: [],
-        wordpressFeaturedImageEnabled: true,
-        wordpressExcerptLength: 150,
-        wordpressStatus: 'draft' as 'draft' | 'publish' | 'private',
+      // Don't set fallback settings, keep current settings if they exist
+      if (!settings) {
+        // Only set fallback if no settings exist at all
+        const fallbackSettings = {
+          siteName: 'LTA - Logistics Technology Application',
+          siteDescription: 'Ứng dụng công nghệ logistics hàng đầu Việt Nam',
+          siteUrl: 'https://lta.com.vn',
+          maintenanceMode: false,
+          smtpHost: 'smtp.gmail.com',
+          smtpPort: '587',
+          smtpUser: 'noreply@lta.com.vn',
+          smtpPass: '',
+          twoFactorAuth: false,
+          sessionTimeout: 0, // No timeout - session never expires
+          passwordPolicy: true,
+          loginAttempts: 5,
+          maxPasswordAge: 90,
+          requireSpecialChars: true,
+          lockoutDuration: 15,
+          enableAuditLog: true,
+          ipWhitelist: '',
+          sessionConcurrency: 1,
+          emailNotifications: true,
+          pushNotifications: false,
+          newsAlerts: true,
+          systemAlerts: true,
+          wordpressSiteUrl: 'https://wp2.ltacv.com',
+          wordpressUsername: '',
+          wordpressApplicationPassword: '',
+          wordpressAutoPublish: false,
+          wordpressDefaultCategory: '',
+          wordpressDefaultTags: [],
+          wordpressFeaturedImageEnabled: true,
+          wordpressExcerptLength: 150,
+          wordpressStatus: 'draft' as 'draft' | 'publish' | 'private',
 
-        // Contact / Google Apps Script
-        googleAppsScriptUrl: '',
-        contactRequestTimeoutMs: 10000
+          // Contact / Google Apps Script
+          googleAppsScriptUrl: '',
+          contactRequestTimeoutMs: 10000
+        }
+        console.log('Using fallback settings (no existing settings):', fallbackSettings)
+        setSettings(fallbackSettings)
+      } else {
+        console.log('Keeping existing settings despite load error')
       }
-      console.log('Using fallback settings:', fallbackSettings)
-      setSettings(fallbackSettings)
     } finally {
       setIsLoading(false)
     }

@@ -1,169 +1,226 @@
-const fs = require('fs');
-const path = require('path');
+const fs = require('fs')
+const path = require('path')
+const crypto = require('crypto')
 
-// Đường dẫn đến file cấu hình
-const PLUGIN_CONFIG_FILE_PATH = path.join(process.cwd(), 'data', 'plugin-config.json');
+// Encryption key (same as in lib/security.ts)
+const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY || 'lta-encryption-key-2024-stable-32chars'
 
-// Test kết nối WordPress
-const testWordPressConnection = async () => {
+// Get encryption key
+function getKey() {
+  return crypto.scryptSync(ENCRYPTION_KEY, 'salt', 32)
+}
+
+// Decrypt sensitive data
+function decryptSensitiveData(encryptedData) {
   try {
-    console.log('🧪 Test kết nối WordPress');
-    console.log('========================');
+    const key = getKey()
+    const dataBuffer = Buffer.from(encryptedData, 'base64')
+    const salt = dataBuffer.slice(0, 8)
+    const encrypted = dataBuffer.slice(8)
+    const keyBuffer = Buffer.from(key)
     
-    // Kiểm tra file cấu hình
-    if (!fs.existsSync(PLUGIN_CONFIG_FILE_PATH)) {
-      console.log('❌ File plugin-config.json không tồn tại');
-      return;
+    // XOR decryption with key
+    const decrypted = Buffer.alloc(encrypted.length)
+    for (let i = 0; i < encrypted.length; i++) {
+      decrypted[i] = encrypted[i] ^ keyBuffer[i % keyBuffer.length]
     }
     
-    const configData = fs.readFileSync(PLUGIN_CONFIG_FILE_PATH, 'utf8');
-    const config = JSON.parse(configData);
-    
-    console.log('📋 Cấu hình plugin:');
-    console.log(`   - API Key: ${config.apiKey ? '✅ Có' : '❌ Không có'}`);
-    console.log(`   - Webhook URL: ${config.webhookUrl || '❌ Không có'}`);
-    console.log(`   - Auto Sync: ${config.autoSync ? '✅ Bật' : '❌ Tắt'}`);
-    
-    if (!config.apiKey) {
-      console.log('❌ Plugin chưa được cấu hình API key');
-      return;
-    }
-    
-    // Test kết nối
-    console.log('\n🔍 Testing WordPress connection...');
-    
-    const testResponse = await fetch('http://localhost:3001/api/wordpress/test-connection', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({}) // Không cần gửi config, API sẽ đọc từ file
-    });
-    
-    const result = await testResponse.json();
-    
-    if (testResponse.ok && result.success) {
-      console.log('✅ Kết nối WordPress thành công!');
-      console.log(`📡 Site URL: ${result.siteUrl}`);
-    } else {
-      console.log('❌ Kết nối WordPress thất bại');
-      console.log(`📋 Lỗi: ${result.error}`);
-      if (result.details) {
-        console.log(`🔍 Chi tiết: ${result.details}`);
-      }
-    }
-    
+    return decrypted.toString('utf8')
   } catch (error) {
-    console.error('❌ Lỗi khi test kết nối:', error);
+    console.error('Decryption error:', error)
+    throw new Error('Failed to decrypt data')
   }
-};
+}
 
-// Test tạo tin tức với WordPress
-const testCreateNewsWithWordPress = async () => {
-  try {
-    console.log('\n🧪 Test tạo tin tức với WordPress');
-    console.log('==================================');
-    
-    const testNews = {
-      title: 'Tin tức test WordPress - ' + new Date().toISOString(),
-      slug: 'tin-tuc-test-wordpress-' + Date.now(),
-      excerpt: 'Đây là tin tức test để kiểm tra kết nối WordPress',
-      content: '<p>Nội dung test WordPress</p><p>Kiểm tra xem có lưu được không.</p>',
-      status: 'draft',
-      featured: false,
-      category: 'Test',
-      author: 'Admin Test',
-      featuredImage: '',
-      additionalImages: []
-    };
-    
-    console.log('📝 Dữ liệu test:', testNews);
-    
-    const response = await fetch('http://localhost:3001/api/news', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(testNews)
-    });
-    
-    const result = await response.json();
-    
-    if (response.ok && result.success) {
-      console.log('✅ Tạo tin tức thành công!');
-      console.log(`📋 WordPress ID: ${result.data.wordpressId}`);
-      console.log(`🔗 Link: ${result.data.link}`);
-      console.log(`📝 Message: ${result.message}`);
-    } else {
-      console.log('❌ Tạo tin tức thất bại');
-      console.log(`📋 Lỗi: ${result.error}`);
-      if (result.warning) {
-        console.log(`⚠️ Cảnh báo: ${result.warning}`);
-      }
-      if (result.details) {
-        console.log(`🔍 Chi tiết: ${result.details}`);
-      }
-    }
-    
-  } catch (error) {
-    console.error('❌ Lỗi khi test tạo tin tức:', error);
-  }
-};
-
-// Test lấy danh sách tin tức
-const testGetNewsList = async () => {
-  try {
-    console.log('\n🧪 Test lấy danh sách tin tức');
-    console.log('==============================');
-    
-    const response = await fetch('http://localhost:3001/api/news');
-    const result = await response.json();
-    
-    if (response.ok && result.success) {
-      console.log('✅ Lấy danh sách thành công!');
-      console.log(`📊 Tổng số: ${result.data.length} tin tức`);
-      console.log(`📡 Nguồn: ${result.source || 'unknown'}`);
-      if (result.message) {
-        console.log(`📝 Message: ${result.message}`);
+// Load and decrypt WordPress config
+function getWordPressConfig() {
+  const configFile = path.join(process.cwd(), 'data', 'wordpress-config.json')
+  
+  if (fs.existsSync(configFile)) {
+    try {
+      const configData = fs.readFileSync(configFile, 'utf8')
+      const config = JSON.parse(configData)
+      
+      // Decrypt sensitive fields if needed
+      const decryptIfPrefixed = (value) => {
+        if (typeof value === 'string' && value.startsWith('ENCRYPTED:')) {
+          try {
+            return decryptSensitiveData(value.replace('ENCRYPTED:', ''))
+          } catch {
+            return value
+          }
+        }
+        return value
       }
       
-      if (result.data.length > 0) {
-        console.log('\n📋 Danh sách tin tức:');
-        result.data.slice(0, 3).forEach((item, index) => {
-          console.log(`${index + 1}. ${item.title} (ID: ${item.id})`);
-          console.log(`   - Trạng thái: ${item.status}`);
-          console.log(`   - WordPress ID: ${item.wordpressId || 'N/A'}`);
-          console.log(`   - Đã sync: ${item.syncedToWordPress ? '✅' : '❌'}`);
-        });
+      return {
+        ...config,
+        username: decryptIfPrefixed(config.username),
+        applicationPassword: decryptIfPrefixed(config.applicationPassword),
       }
+    } catch (error) {
+      console.error('Error reading WordPress config file:', error)
+      return null
+    }
+  }
+  return null
+}
+
+// Load and decrypt plugin config
+function getPluginConfig() {
+  const configFile = path.join(process.cwd(), 'data', 'plugin-config.json')
+  
+  if (fs.existsSync(configFile)) {
+    try {
+      const configData = fs.readFileSync(configFile, 'utf8')
+      const config = JSON.parse(configData)
+      
+      // Decrypt API key if needed
+      if (config.apiKey && config.apiKey.startsWith('ENCRYPTED:')) {
+        config.apiKey = decryptSensitiveData(config.apiKey.replace('ENCRYPTED:', ''))
+      }
+      
+      return config
+    } catch (error) {
+      console.error('Error reading plugin config file:', error)
+      return null
+    }
+  }
+  return null
+}
+
+// Test WordPress connection
+async function testWordPressConnection() {
+  console.log('🔍 Testing WordPress connection...')
+  
+  const wordpressConfig = getWordPressConfig()
+  const pluginConfig = getPluginConfig()
+  
+  console.log('📋 WordPress Config:', {
+    siteUrl: wordpressConfig?.siteUrl,
+    username: wordpressConfig?.username ? '***' : 'empty',
+    applicationPassword: wordpressConfig?.applicationPassword ? '***' : 'empty'
+  })
+  
+  console.log('📋 Plugin Config:', {
+    apiKey: pluginConfig?.apiKey ? '***' : 'empty',
+    webhookUrl: pluginConfig?.webhookUrl
+  })
+  
+  if (!wordpressConfig || !wordpressConfig.siteUrl || !wordpressConfig.username || !wordpressConfig.applicationPassword) {
+    console.log('❌ WordPress config incomplete')
+    return false
+  }
+  
+  if (!pluginConfig || !pluginConfig.apiKey) {
+    console.log('❌ Plugin config incomplete')
+    return false
+  }
+  
+  // Test basic WordPress REST API
+  try {
+    const credentials = Buffer.from(`${wordpressConfig.username}:${wordpressConfig.applicationPassword}`).toString('base64')
+    const testUrl = `${wordpressConfig.siteUrl}/wp-json/wp/v2/posts?per_page=1`
+    
+    console.log('🔗 Testing REST API:', testUrl)
+    
+    const response = await fetch(testUrl, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Basic ${credentials}`
+      }
+    })
+    
+    if (response.ok) {
+      console.log('✅ WordPress REST API connection successful')
+      return true
     } else {
-      console.log('❌ Lấy danh sách thất bại');
-      console.log(`📋 Lỗi: ${result.error}`);
+      console.log('❌ WordPress REST API connection failed:', response.status, response.statusText)
+      return false
+    }
+  } catch (error) {
+    console.log('❌ WordPress connection error:', error.message)
+    return false
+  }
+}
+
+// Test plugin AJAX endpoint
+async function testPluginEndpoint() {
+  console.log('🔍 Testing plugin AJAX endpoint...')
+  
+  const wordpressConfig = getWordPressConfig()
+  const pluginConfig = getPluginConfig()
+  
+  if (!wordpressConfig?.siteUrl || !pluginConfig?.apiKey) {
+    console.log('❌ Config incomplete for plugin test')
+    return false
+  }
+  
+  try {
+    const ajaxUrl = `${wordpressConfig.siteUrl.replace(/\/$/, '')}/wp-admin/admin-ajax.php?action=lta_news_create`
+    
+    console.log('🔗 Testing plugin AJAX:', ajaxUrl)
+    
+    const payload = {
+      apiKey: pluginConfig.apiKey,
+      title: 'Test Post',
+      content: 'Test content',
+      excerpt: 'Test excerpt',
+      status: 'draft'
     }
     
+    const response = await fetch(ajaxUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(payload)
+    })
+    
+    const text = await response.text()
+    console.log('📄 Plugin response:', text)
+    
+    if (response.ok) {
+      console.log('✅ Plugin endpoint test successful')
+      return true
+    } else {
+      console.log('❌ Plugin endpoint test failed:', response.status, response.statusText)
+      return false
+    }
   } catch (error) {
-    console.error('❌ Lỗi khi lấy danh sách:', error);
+    console.log('❌ Plugin endpoint error:', error.message)
+    return false
   }
-};
+}
 
 // Main function
-const main = async () => {
-  console.log('🚀 Script test kết nối WordPress');
-  console.log('================================');
+async function main() {
+  console.log('🚀 Starting WordPress connection tests...')
+  console.log('📁 Working directory:', process.cwd())
   
-  // Chờ server khởi động
-  console.log('⏳ Chờ server khởi động...');
-  await new Promise(resolve => setTimeout(resolve, 3000));
+  const restApiTest = await testWordPressConnection()
+  const pluginTest = await testPluginEndpoint()
   
-  // Test các chức năng
-  await testWordPressConnection();
-  await testCreateNewsWithWordPress();
-  await testGetNewsList();
-};
+  console.log('\n📊 Test Results:')
+  console.log('REST API:', restApiTest ? '✅ PASS' : '❌ FAIL')
+  console.log('Plugin AJAX:', pluginTest ? '✅ PASS' : '❌ FAIL')
+  
+  if (!restApiTest || !pluginTest) {
+    console.log('\n🔧 Troubleshooting:')
+    console.log('1. Check WordPress site URL is accessible')
+    console.log('2. Verify username and application password are correct')
+    console.log('3. Ensure plugin is installed and activated')
+    console.log('4. Check plugin API key is valid')
+  }
+}
 
-// Chạy test
+// Run if called directly
 if (require.main === module) {
-  main();
+  main().catch(console.error)
 }
 
 module.exports = {
   testWordPressConnection,
-  testCreateNewsWithWordPress,
-  testGetNewsList
-};
+  testPluginEndpoint
+}

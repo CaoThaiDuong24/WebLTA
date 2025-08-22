@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { decryptSensitiveData } from '@/lib/security'
 import fs from 'fs'
 import path from 'path'
 
@@ -9,7 +10,14 @@ const getPluginConfig = () => {
   try {
     if (fs.existsSync(PLUGIN_CONFIG_FILE_PATH)) {
       const configData = fs.readFileSync(PLUGIN_CONFIG_FILE_PATH, 'utf8')
-      return JSON.parse(configData)
+      const config = JSON.parse(configData)
+      
+      // Decrypt API key if needed
+      if (config.apiKey && config.apiKey.startsWith('ENCRYPTED:')) {
+        config.apiKey = decryptSensitiveData(config.apiKey.replace('ENCRYPTED:', ''))
+      }
+      
+      return config
     }
     return null
   } catch (error) {
@@ -20,8 +28,6 @@ const getPluginConfig = () => {
 
 export async function GET(request: NextRequest) {
   try {
-    console.log('📡 Fetching posts from WordPress...')
-    
     const pluginConfig = getPluginConfig()
     if (!pluginConfig?.apiKey) {
       return NextResponse.json(
@@ -30,10 +36,11 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    // Fetch posts from WordPress via plugin
+    // Fetch posts from WordPress via plugin với timeout
     const response = await fetch(`${request.nextUrl.origin}/api/wordpress/search-posts`, {
       method: 'GET',
-      headers: { 'Content-Type': 'application/json' }
+      headers: { 'Content-Type': 'application/json' },
+      signal: AbortSignal.timeout(8000) // 8 giây timeout
     })
 
     if (!response.ok) {

@@ -44,9 +44,7 @@ interface WordPressConfig {
 
 export function WordPressConfig() {
   const { toast } = useToast()
-  const { settings, updateSetting, isLoading } = useSettings()
-  
-  
+  const { settings, updateSetting, isLoading, refreshSettings } = useSettings()
   
   const [config, setConfig] = useState<WordPressConfig>({
     siteUrl: 'https://wp2.ltacv.com',
@@ -67,42 +65,59 @@ export function WordPressConfig() {
   const [categories, setCategories] = useState<any[]>([])
   const [newTag, setNewTag] = useState('')
 
-  // Load config from settings context
+  // Load config from WordPress config file and settings context
   useEffect(() => {
-    if (settings && !isLoading) {
-      
-      setConfig({
-        siteUrl: settings.wordpressSiteUrl || 'https://wp2.ltacv.com',
-        username: settings.wordpressUsername || '',
-        password: '',
-        applicationPassword: settings.wordpressApplicationPassword || '',
-        autoPublish: settings.wordpressAutoPublish || false,
-        defaultCategory: settings.wordpressDefaultCategory || '',
-        defaultTags: settings.wordpressDefaultTags || [],
-        featuredImageEnabled: settings.wordpressFeaturedImageEnabled || true,
-        excerptLength: settings.wordpressExcerptLength || 150,
-        status: (settings.wordpressStatus as 'draft' | 'publish' | 'private') || 'draft'
-      })
+    const loadWordPressConfig = async () => {
+      try {
+        // Load từ WordPress config file trước
+        const wpResponse = await fetch('/api/wordpress/config')
+        if (wpResponse.ok) {
+          const wpConfig = await wpResponse.json()
+          if (wpConfig.config) {
+            setConfig({
+              siteUrl: wpConfig.config.siteUrl || 'https://wp2.ltacv.com',
+              username: wpConfig.config.username || '',
+              password: '',
+              applicationPassword: wpConfig.config.applicationPassword || '',
+              autoPublish: wpConfig.config.autoPublish || false,
+              defaultCategory: wpConfig.config.defaultCategory || '',
+              defaultTags: wpConfig.config.defaultTags || [],
+              featuredImageEnabled: wpConfig.config.featuredImageEnabled !== false,
+              excerptLength: wpConfig.config.excerptLength || 150,
+              status: (wpConfig.config.status as 'draft' | 'publish' | 'private') || 'draft'
+            })
+            setIsConnected(wpConfig.config.isConnected || false)
+            return
+          }
+        }
+      } catch (error) {
+        console.log('Could not load WordPress config from file, falling back to settings context')
+      }
+
+      // Fallback to settings context
+      if (settings && !isLoading) {
+        setConfig({
+          siteUrl: settings.wordpressSiteUrl || 'https://wp2.ltacv.com',
+          username: settings.wordpressUsername || '',
+          password: '',
+          applicationPassword: settings.wordpressApplicationPassword || '',
+          autoPublish: settings.wordpressAutoPublish || false,
+          defaultCategory: settings.wordpressDefaultCategory || '',
+          defaultTags: settings.wordpressDefaultTags || [],
+          featuredImageEnabled: settings.wordpressFeaturedImageEnabled !== false,
+          excerptLength: settings.wordpressExcerptLength || 150,
+          status: (settings.wordpressStatus as 'draft' | 'publish' | 'private') || 'draft'
+        })
+      }
     }
+
+    loadWordPressConfig()
   }, [settings, isLoading])
 
   // Save config to settings context and file
   const saveConfig = async () => {
     setIsSaving(true)
     try {
-      
-      
-      // Update each WordPress setting
-      await updateSetting('wordpressSiteUrl', config.siteUrl)
-      await updateSetting('wordpressUsername', config.username)
-      await updateSetting('wordpressApplicationPassword', config.applicationPassword)
-      await updateSetting('wordpressAutoPublish', config.autoPublish)
-      await updateSetting('wordpressDefaultCategory', config.defaultCategory)
-      await updateSetting('wordpressDefaultTags', config.defaultTags)
-      await updateSetting('wordpressFeaturedImageEnabled', config.featuredImageEnabled)
-      await updateSetting('wordpressExcerptLength', config.excerptLength)
-      await updateSetting('wordpressStatus', config.status)
-      
       // Lưu cấu hình WordPress vào file để server có thể đọc
       const wordpressConfig = {
         siteUrl: config.siteUrl,
@@ -118,7 +133,7 @@ export function WordPressConfig() {
       }
       
       // Lưu vào API settings
-      await fetch('/api/settings', {
+      const response = await fetch('/api/settings', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -127,13 +142,31 @@ export function WordPressConfig() {
           wordpressConfig: wordpressConfig
         }),
       })
-      
-      toast({
-        title: "Đã lưu cấu hình",
-        description: "Cấu hình WordPress API đã được lưu thành công.",
-      })
+
+      if (response.ok) {
+        // Update settings context với dữ liệu mới
+        await updateSetting('wordpressSiteUrl', config.siteUrl)
+        await updateSetting('wordpressUsername', config.username)
+        await updateSetting('wordpressApplicationPassword', config.applicationPassword)
+        await updateSetting('wordpressAutoPublish', config.autoPublish)
+        await updateSetting('wordpressDefaultCategory', config.defaultCategory)
+        await updateSetting('wordpressDefaultTags', config.defaultTags)
+        await updateSetting('wordpressFeaturedImageEnabled', config.featuredImageEnabled)
+        await updateSetting('wordpressExcerptLength', config.excerptLength)
+        await updateSetting('wordpressStatus', config.status)
+        
+        // Refresh settings context để đảm bảo dữ liệu được cập nhật
+        await refreshSettings()
+        
+        toast({
+          title: "Đã lưu cấu hình",
+          description: "Cấu hình WordPress API đã được lưu thành công.",
+        })
+      } else {
+        throw new Error('Failed to save WordPress config')
+      }
     } catch (error) {
-      
+      console.error('Error saving WordPress config:', error)
       toast({
         title: "Lỗi lưu cấu hình",
         description: "Không thể lưu cấu hình WordPress API.",
@@ -148,7 +181,6 @@ export function WordPressConfig() {
   const testConnection = async () => {
     setIsTesting(true)
     try {
-      
       const response = await fetch('/api/wordpress/test-connection', {
         method: 'POST',
         headers: {
@@ -179,7 +211,7 @@ export function WordPressConfig() {
         })
       }
     } catch (error) {
-      
+      console.error('Error testing connection:', error)
       setIsConnected(false)
       toast({
         title: "Lỗi kết nối",
@@ -226,332 +258,201 @@ export function WordPressConfig() {
           ) : (
             <Badge variant="destructive">
               <XCircle className="w-3 h-3 mr-1" />
-              Kết nối thất bại
+              Chưa kết nối
             </Badge>
           )}
         </div>
-        <Button 
-          onClick={testConnection} 
-          disabled={isTesting || !config.siteUrl || !config.username || !config.applicationPassword}
+        
+        <Button
           variant="outline"
           size="sm"
+          onClick={testConnection}
+          disabled={isTesting}
         >
-          <TestTube className="w-4 h-4 mr-2" />
-          {isTesting ? 'Đang kiểm tra...' : 'Kiểm tra kết nối'}
+          {isTesting ? (
+            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+          ) : (
+            <TestTube className="w-4 h-4 mr-2" />
+          )}
+          Kiểm tra kết nối
         </Button>
       </div>
 
       {/* Basic Configuration */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center space-x-2">
-            <Globe className="h-5 w-5" />
-            <span>Cấu hình cơ bản</span>
-          </CardTitle>
-          <CardDescription>
-            Thông tin kết nối WordPress API
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="space-y-2">
+          <Label htmlFor="siteUrl" className="text-sm">WordPress Site URL</Label>
+          <Input 
+            id="siteUrl" 
+            value={config.siteUrl}
+            onChange={(e) => setConfig(prev => ({ ...prev, siteUrl: e.target.value }))}
+            placeholder="https://your-wordpress-site.com"
+          />
+        </div>
+        
+        <div className="space-y-2">
+          <Label htmlFor="username" className="text-sm">Username</Label>
+          <Input 
+            id="username" 
+            value={config.username}
+            onChange={(e) => setConfig(prev => ({ ...prev, username: e.target.value }))}
+            placeholder="admin"
+          />
+        </div>
+      </div>
+
+      <div className="space-y-2">
+        <Label htmlFor="applicationPassword" className="text-sm">Application Password</Label>
+        <Input 
+          id="applicationPassword" 
+          type="password"
+          value={config.applicationPassword}
+          onChange={(e) => setConfig(prev => ({ ...prev, applicationPassword: e.target.value }))}
+          placeholder="•••• •••• •••• ••••"
+        />
+        <p className="text-xs text-muted-foreground">
+          Tạo Application Password trong WordPress Admin → Users → Profile → Application Passwords
+        </p>
+      </div>
+
+      <Separator />
+
+      {/* Publishing Options */}
+      <div className="space-y-4">
+        <h3 className="text-lg font-medium">Tùy chọn xuất bản</h3>
+        
+        <div className="flex items-center justify-between">
+          <Label htmlFor="autoPublish" className="text-sm">Tự động xuất bản</Label>
+          <Switch 
+            id="autoPublish" 
+            checked={config.autoPublish}
+            onCheckedChange={(checked) => setConfig(prev => ({ ...prev, autoPublish: checked }))}
+          />
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="space-y-2">
-            <Label htmlFor="siteUrl">URL WordPress Site *</Label>
-            <Input
-              id="siteUrl"
-              type="url"
-              placeholder="https://your-wordpress-site.com"
-              value={config.siteUrl}
-              onChange={(e) => setConfig(prev => ({ ...prev, siteUrl: e.target.value }))}
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="username">Username *</Label>
-            <Input
-              id="username"
-              placeholder="admin"
-              value={config.username}
-              onChange={(e) => setConfig(prev => ({ ...prev, username: e.target.value }))}
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="applicationPassword">Application Password *</Label>
-            <Input
-              id="applicationPassword"
-              type="password"
-              placeholder="••••••••••••••••"
-              value={config.applicationPassword}
-              onChange={(e) => setConfig(prev => ({ ...prev, applicationPassword: e.target.value }))}
-            />
-            <p className="text-xs text-muted-foreground">
-              Tạo Application Password trong WordPress Admin → Users → Profile → Application Passwords
-            </p>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Publishing Settings */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center space-x-2">
-            <FileText className="h-5 w-5" />
-            <span>Cài đặt xuất bản</span>
-          </CardTitle>
-          <CardDescription>
-            Cấu hình cách thức đăng tin tức
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex items-center justify-between">
-            <Label htmlFor="autoPublish">Tự động xuất bản</Label>
-            <Switch
-              id="autoPublish"
-              checked={config.autoPublish}
-              onCheckedChange={(checked) => setConfig(prev => ({ ...prev, autoPublish: checked }))}
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="status">Trạng thái mặc định</Label>
-            <select
-              id="status"
-              className="w-full p-2 border border-input rounded-md"
-              value={config.status}
-              onChange={(e) => setConfig(prev => ({ ...prev, status: e.target.value as any }))}
-            >
-              <option value="draft">Bản nháp</option>
-              <option value="publish">Xuất bản</option>
-              <option value="private">Riêng tư</option>
-            </select>
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="excerptLength">Độ dài tóm tắt (ký tự)</Label>
-            <Input
-              id="excerptLength"
-              type="number"
-              min="50"
-              max="500"
-              value={config.excerptLength}
-              onChange={(e) => setConfig(prev => ({ ...prev, excerptLength: parseInt(e.target.value) }))}
-            />
-          </div>
-
-          <div className="flex items-center justify-between">
-            <Label htmlFor="featuredImage">Hỗ trợ ảnh đại diện</Label>
-            <Switch
-              id="featuredImage"
-              checked={config.featuredImageEnabled}
-              onCheckedChange={(checked) => setConfig(prev => ({ ...prev, featuredImageEnabled: checked }))}
-            />
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Categories and Tags */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center space-x-2">
-            <Tag className="h-5 w-5" />
-            <span>Danh mục và thẻ</span>
-          </CardTitle>
-          <CardDescription>
-            Cấu hình danh mục và thẻ mặc định
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="defaultCategory">Danh mục mặc định</Label>
-            <select
-              id="defaultCategory"
-              className="w-full p-2 border border-input rounded-md"
+            <Label htmlFor="defaultCategory" className="text-sm">Danh mục mặc định</Label>
+            <Input 
+              id="defaultCategory" 
               value={config.defaultCategory}
               onChange={(e) => setConfig(prev => ({ ...prev, defaultCategory: e.target.value }))}
+              placeholder="Uncategorized"
+            />
+          </div>
+          
+          <div className="space-y-2">
+            <Label htmlFor="status" className="text-sm">Trạng thái mặc định</Label>
+            <select
+              id="status"
+              value={config.status}
+              onChange={(e) => setConfig(prev => ({ ...prev, status: e.target.value as 'draft' | 'publish' | 'private' }))}
+              className="w-full px-3 py-2 border border-input bg-background rounded-md text-sm"
             >
-              <option value="">Chọn danh mục</option>
-              {categories.map((category) => (
-                <option key={category.id} value={category.id}>
-                  {category.name}
-                </option>
-              ))}
+              <option value="draft">Draft</option>
+              <option value="publish">Publish</option>
+              <option value="private">Private</option>
             </select>
           </div>
+        </div>
 
-          <div className="space-y-2">
-            <Label>Thẻ mặc định</Label>
-            <div className="flex space-x-2">
-              <Input
-                placeholder="Thêm thẻ mới"
-                value={newTag}
-                onChange={(e) => setNewTag(e.target.value)}
-                onKeyPress={(e) => e.key === 'Enter' && addTag()}
-              />
-              <Button onClick={addTag} variant="outline" size="sm">
-                Thêm
-              </Button>
-            </div>
-            {config.defaultTags.length > 0 && (
-              <div className="flex flex-wrap gap-2 mt-2">
-                {config.defaultTags.map((tag) => (
-                  <Badge key={tag} variant="secondary" className="cursor-pointer" onClick={() => removeTag(tag)}>
-                    {tag} ×
-                  </Badge>
-                ))}
-              </div>
-            )}
+        <div className="space-y-2">
+          <Label htmlFor="excerptLength" className="text-sm">Độ dài tóm tắt (ký tự)</Label>
+          <Input 
+            id="excerptLength" 
+            type="number"
+            value={config.excerptLength}
+            onChange={(e) => setConfig(prev => ({ ...prev, excerptLength: parseInt(e.target.value) || 150 }))}
+            min="50"
+            max="500"
+          />
+        </div>
+
+        <div className="flex items-center justify-between">
+          <Label htmlFor="featuredImage" className="text-sm">Bật ảnh đại diện</Label>
+          <Switch 
+            id="featuredImage" 
+            checked={config.featuredImageEnabled}
+            onCheckedChange={(checked) => setConfig(prev => ({ ...prev, featuredImageEnabled: checked }))}
+          />
+        </div>
+      </div>
+
+      <Separator />
+
+      {/* Tags Configuration */}
+      <div className="space-y-4">
+        <h3 className="text-lg font-medium">Tags mặc định</h3>
+        
+        <div className="flex space-x-2">
+          <Input 
+            value={newTag}
+            onChange={(e) => setNewTag(e.target.value)}
+            placeholder="Thêm tag mới"
+            onKeyPress={(e) => e.key === 'Enter' && addTag()}
+          />
+          <Button onClick={addTag} disabled={!newTag.trim()}>
+            Thêm
+          </Button>
+        </div>
+
+        {config.defaultTags.length > 0 && (
+          <div className="flex flex-wrap gap-2">
+            {config.defaultTags.map((tag, index) => (
+              <Badge key={index} variant="secondary" className="flex items-center space-x-1">
+                <span>{tag}</span>
+                <button
+                  onClick={() => removeTag(tag)}
+                  className="ml-1 hover:text-destructive"
+                >
+                  <XCircle className="w-3 h-3" />
+                </button>
+              </Badge>
+            ))}
           </div>
-        </CardContent>
-      </Card>
+        )}
+      </div>
 
-      {/* Auto-Sync Status */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center space-x-2">
-            <Settings className="h-5 w-5" />
-            <span>Trạng thái đồng bộ tự động</span>
-          </CardTitle>
-          <CardDescription>
-            Thông tin về tính năng tự động đồng bộ tin tức lên WordPress
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex items-center justify-between p-4 bg-muted rounded-lg">
-            <div className="space-y-1">
-              <p className="font-medium">Tự động đồng bộ</p>
-              <p className="text-sm text-muted-foreground">
-                {config.autoPublish 
-                  ? 'Tin tức sẽ tự động được đồng bộ lên WordPress khi tạo mới hoặc cập nhật'
-                  : 'Tính năng tự động đồng bộ đã bị tắt'
-                }
-              </p>
+      {/* Available Categories */}
+      {categories.length > 0 && (
+        <>
+          <Separator />
+          <div className="space-y-4">
+            <h3 className="text-lg font-medium">Danh mục có sẵn</h3>
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+              {categories.map((category: any) => (
+                <Badge key={category.id} variant="outline">
+                  {category.name} ({category.count})
+                </Badge>
+              ))}
             </div>
-            <Badge variant={config.autoPublish ? "default" : "secondary"}>
-              {config.autoPublish ? "BẬT" : "TẮT"}
-            </Badge>
           </div>
-
-          {config.autoPublish && (
-            <Alert>
-              <CheckCircle className="h-4 w-4" />
-              <AlertDescription>
-                <strong>Tính năng đã được kích hoạt!</strong> Bây giờ:
-                <ul className="list-disc list-inside mt-2 space-y-1">
-                  <li>✅ Tin tức mới sẽ tự động đồng bộ lên WordPress</li>
-                  <li>✅ Tin tức được cập nhật sẽ tự động cập nhật trên WordPress</li>
-                  <li>✅ Sử dụng multi-method sync để đảm bảo tỷ lệ thành công cao nhất</li>
-                  <li>⚠️ Chỉ tin tức đã được sync trước đó mới được cập nhật tự động</li>
-                </ul>
-              </AlertDescription>
-            </Alert>
-          )}
-
-          {/* Thông tin về các phương pháp đồng bộ */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center space-x-2">
-                <RefreshCw className="h-5 w-5" />
-                <span>Phương pháp đồng bộ</span>
-              </CardTitle>
-              <CardDescription>
-                Hệ thống sẽ tự động thử các phương pháp theo thứ tự ưu tiên
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <div className="p-3 bg-blue-50 rounded-lg border">
-                  <div className="flex items-center space-x-2">
-                    <div className="w-3 h-3 bg-blue-500 rounded-full"></div>
-                    <span className="font-medium text-blue-900">1. XML-RPC</span>
-                  </div>
-                  <p className="text-sm text-blue-700 mt-1">Phương pháp chính, ít bị chặn nhất</p>
-                </div>
-                
-                <div className="p-3 bg-green-50 rounded-lg border">
-                  <div className="flex items-center space-x-2">
-                    <div className="w-3 h-3 bg-green-500 rounded-full"></div>
-                    <span className="font-medium text-green-900">2. cURL</span>
-                  </div>
-                  <p className="text-sm text-green-700 mt-1">Sử dụng cURL để gọi trực tiếp</p>
-                </div>
-                
-                <div className="p-3 bg-yellow-50 rounded-lg border">
-                  <div className="flex items-center space-x-2">
-                    <div className="w-3 h-3 bg-yellow-500 rounded-full"></div>
-                    <span className="font-medium text-yellow-900">3. Fallback</span>
-                  </div>
-                  <p className="text-sm text-yellow-700 mt-1">Mô phỏng wp-admin nếu cần</p>
-                </div>
-                
-                <div className="p-3 bg-purple-50 rounded-lg border">
-                  <div className="flex items-center space-x-2">
-                    <div className="w-3 h-3 bg-purple-500 rounded-full"></div>
-                    <span className="font-medium text-purple-900">4. wp-cron</span>
-                  </div>
-                  <p className="text-sm text-purple-700 mt-1">Sử dụng WordPress cron system</p>
-                </div>
-                
-                <div className="p-3 bg-gray-50 rounded-lg border md:col-span-2">
-                  <div className="flex items-center space-x-2">
-                    <div className="w-3 h-3 bg-gray-500 rounded-full"></div>
-                    <span className="font-medium text-gray-900">5. REST API</span>
-                  </div>
-                  <p className="text-sm text-gray-700 mt-1">Phương pháp cuối cùng (có thể bị chặn)</p>
-                </div>
-              </div>
-              
-              <Alert>
-                <Info className="h-4 w-4" />
-                <AlertDescription>
-                  <strong>Lưu ý:</strong> Nếu REST API bị chặn, hệ thống sẽ tự động sử dụng các phương pháp thay thế. 
-                  
-                </AlertDescription>
-              </Alert>
-            </CardContent>
-          </Card>
-
-          {!config.autoPublish && (
-            <Alert>
-              <AlertCircle className="h-4 w-4" />
-              <AlertDescription>
-                <strong>Tính năng đã bị tắt.</strong> Để kích hoạt:
-                <ul className="list-disc list-inside mt-2 space-y-1">
-                  <li>Bật switch "Tự động xuất bản" ở trên</li>
-                  <li>Lưu cấu hình</li>
-                  <li>Tin tức sẽ được đồng bộ thủ công hoặc qua API riêng</li>
-                </ul>
-              </AlertDescription>
-            </Alert>
-          )}
-        </CardContent>
-      </Card>
+        </>
+      )}
 
       {/* Save Button */}
       <div className="flex justify-end">
-        <Button onClick={saveConfig} disabled={isSaving} className="w-full sm:w-auto">
+        <Button onClick={saveConfig} disabled={isSaving}>
           {isSaving ? (
             <>
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
               Đang lưu...
             </>
           ) : (
             <>
-              <Save className="mr-2 h-4 w-4" />
+              <Save className="w-4 h-4 mr-2" />
               Lưu cấu hình
             </>
           )}
         </Button>
       </div>
 
-      {/* Help Information */}
+      {/* Info Alert */}
       <Alert>
-        <AlertCircle className="h-4 w-4" />
+        <Info className="h-4 w-4" />
         <AlertDescription>
-          <strong>Hướng dẫn:</strong> Để sử dụng WordPress API, bạn cần:
-          <ul className="list-disc list-inside mt-2 space-y-1">
-            <li>Tạo Application Password trong WordPress Admin</li>
-            <li>Đảm bảo REST API được bật trong WordPress</li>
-            <li>Kiểm tra quyền truy cập của user</li>
-          </ul>
+          Cấu hình này sẽ được sử dụng khi đồng bộ tin tức từ Next.js lên WordPress. 
+          Đảm bảo WordPress site có REST API được bật và Application Password đã được tạo.
         </AlertDescription>
       </Alert>
     </div>

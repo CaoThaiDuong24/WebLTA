@@ -37,16 +37,12 @@ function NewsPageContent() {
         
         if (result.success) {
           const publishedNews = result.data as NewsItem[]
-          // Sắp xếp phía client (phòng trường hợp API chưa đúng): ưu tiên publishedAt > updatedAt > createdAt
-          const sorted = [...publishedNews].sort(
-            (a, b) => new Date(b.publishedAt || b.updatedAt || b.createdAt).getTime() -
-                      new Date(a.publishedAt || a.updatedAt || a.createdAt).getTime()
-          )
-          setNews(sorted)
+          // API đã sắp xếp rồi, không cần sắp xếp lại ở client
+          setNews(publishedNews)
           
-          // Lấy tin nổi bật đầu tiên (nếu có); nếu không, dùng phần tử đầu tiên sau khi sắp xếp
-          const featured = sorted.find((item: NewsItem) => item.featured)
-          setFeaturedNews(featured || sorted[0] || null)
+          // Lấy tin nổi bật đầu tiên (nếu có); nếu không, dùng phần tử đầu tiên
+          const featured = publishedNews.find((item: NewsItem) => item.featured)
+          setFeaturedNews(featured || publishedNews[0] || null)
           
           // Lấy danh sách danh mục từ tin tức
           const uniqueCategories = [...new Set(publishedNews.map((item: NewsItem) => item.category).filter(Boolean))] as string[]
@@ -89,6 +85,28 @@ function NewsPageContent() {
   const toPlainText = (html: string) => {
     if (!html) return ''
     return html.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim()
+  }
+
+  // Helper: format author name
+  const formatAuthor = (author: string) => {
+    if (!author) return 'Admin LTA'
+    
+    // Nếu author là email, chỉ lấy phần trước @
+    if (author.includes('@')) {
+      return author.split('@')[0]
+    }
+    
+    // Xử lý các trường hợp đặc biệt
+    if (author === 'lta2') return 'Admin LTA'
+    if (author === 'admin') return 'Admin LTA'
+    if (author === 'Admin') return 'Admin LTA'
+    
+    // Nếu author quá dài, cắt ngắn
+    if (author.length > 20) {
+      return author.substring(0, 20) + '...'
+    }
+    
+    return author
   }
 
   // Get recent posts (3 most recent from already-sorted list)
@@ -167,7 +185,7 @@ function NewsPageContent() {
                     </div>
                     <div className="flex items-center gap-1.5 text-xs text-gray-500 bg-white/60 px-2 py-1 rounded-md">
                       <User className="h-3 w-3 text-[#4CAF50]" />
-                      <span>{featuredNews.author}</span>
+                      <span>{formatAuthor(featuredNews.author)}</span>
                     </div>
                   </div>
                   
@@ -274,7 +292,7 @@ function NewsPageContent() {
                             </div>
                             <div className="flex items-center gap-1.5 text-xs text-gray-500">
                               <User className="h-3 w-3 text-[#4CAF50]" />
-                              <span>{item.author}</span>
+                              <span>{formatAuthor(item.author)}</span>
                             </div>
                           </div>
                         </div>

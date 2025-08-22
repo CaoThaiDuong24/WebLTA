@@ -13,10 +13,8 @@ import {
   Settings, 
   Globe, 
   Mail, 
-  Shield,
   Save,
   Database,
-  Bell,
   ExternalLink,
   RefreshCw,
   CheckCircle,
@@ -27,6 +25,7 @@ import {
 import { WordPressConfig } from '@/components/admin/wordpress-config'
 import { WordPressSync } from '@/components/admin/wordpress-sync'
 import { WordPressTest } from '@/components/admin/wordpress-test'
+import { SettingsSync } from '@/components/admin/settings-sync'
 import { useToast } from '@/hooks/use-toast'
 
 interface SystemSettings {
@@ -36,41 +35,6 @@ interface SystemSettings {
   siteUrl: string
   maintenanceMode: boolean
   
-  // Email Settings
-  smtpHost: string
-  smtpPort: string
-  smtpUser: string
-  smtpPass: string
-  
-  // Security Settings
-  twoFactorAuth: boolean
-  sessionTimeout: number
-  passwordPolicy: boolean
-  loginAttempts: number
-  maxPasswordAge: number
-  requireSpecialChars: boolean
-  lockoutDuration: number
-  enableAuditLog: boolean
-  ipWhitelist: string
-  sessionConcurrency: number
-  
-  // Notification Settings
-  emailNotifications: boolean
-  pushNotifications: boolean
-  newsAlerts: boolean
-  systemAlerts: boolean
-  
-  // WordPress Settings
-  wordpressSiteUrl: string
-  wordpressUsername: string
-  wordpressApplicationPassword: string
-  wordpressAutoPublish: boolean
-  wordpressDefaultCategory: string
-  wordpressDefaultTags: string[]
-  wordpressFeaturedImageEnabled: boolean
-  wordpressExcerptLength: number
-  wordpressStatus: 'draft' | 'publish' | 'private'
-
   // Contact / Google Apps Script
   googleAppsScriptUrl: string
   contactRequestTimeoutMs: number
@@ -92,41 +56,6 @@ export default function SettingsPage() {
     siteDescription: 'Ứng dụng công nghệ logistics hàng đầu Việt Nam',
     siteUrl: 'https://lta.com.vn',
     maintenanceMode: false,
-    
-    // Email Settings
-    smtpHost: 'smtp.gmail.com',
-    smtpPort: '587',
-    smtpUser: 'noreply@lta.com.vn',
-    smtpPass: '',
-    
-    // Security Settings
-    twoFactorAuth: false,
-    sessionTimeout: 0, // No timeout - session never expires
-    passwordPolicy: true,
-    loginAttempts: 5,
-    maxPasswordAge: 90,
-    requireSpecialChars: true,
-    lockoutDuration: 15,
-    enableAuditLog: true,
-    ipWhitelist: '',
-    sessionConcurrency: 1,
-    
-    // Notification Settings
-    emailNotifications: true,
-    pushNotifications: false,
-    newsAlerts: true,
-    systemAlerts: true,
-    
-    // WordPress Settings
-    wordpressSiteUrl: 'https://wp2.ltacv.com',
-    wordpressUsername: '',
-    wordpressApplicationPassword: '',
-    wordpressAutoPublish: false,
-    wordpressDefaultCategory: '',
-    wordpressDefaultTags: [],
-    wordpressFeaturedImageEnabled: true,
-    wordpressExcerptLength: 150,
-    wordpressStatus: 'draft',
 
     // Contact / Google Apps Script
     googleAppsScriptUrl: '',
@@ -147,7 +76,7 @@ export default function SettingsPage() {
         const result = await response.json()
         console.log('Settings page - Settings loaded:', {
           ...result.settings,
-          wordpressApplicationPassword: result.settings.wordpressApplicationPassword ? '***' : 'empty'
+          googleAppsScriptUrl: result.settings.googleAppsScriptUrl ? '***' : 'empty'
         })
         setSettings(result.settings)
       } else {
@@ -172,7 +101,7 @@ export default function SettingsPage() {
     try {
       console.log('Settings page - Saving settings:', {
         ...settings,
-        wordpressApplicationPassword: settings.wordpressApplicationPassword ? '***' : 'empty'
+        googleAppsScriptUrl: settings.googleAppsScriptUrl ? '***' : 'empty'
       })
       
       const response = await fetch('/api/settings', {
@@ -361,238 +290,6 @@ export default function SettingsPage() {
             </div>
           </CardContent>
         </Card>
-
-        {/* Email Settings */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center space-x-2">
-              <Mail className="h-5 w-5" />
-              <span>Cài đặt email</span>
-            </CardTitle>
-            <CardDescription>
-              Cấu hình hệ thống email
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <div className="grid grid-cols-1 gap-3">
-              <div className="space-y-2">
-                <Label htmlFor="smtpHost" className="text-sm">SMTP Host</Label>
-                <Input 
-                  id="smtpHost" 
-                  value={settings.smtpHost}
-                  onChange={(e) => handleInputChange('smtpHost', e.target.value)}
-                  disabled={isLoading}
-                />
-              </div>
-              
-              <div className="space-y-2">
-                <Label htmlFor="smtpPort" className="text-sm">SMTP Port</Label>
-                <Input 
-                  id="smtpPort" 
-                  value={settings.smtpPort}
-                  onChange={(e) => handleInputChange('smtpPort', e.target.value)}
-                  disabled={isLoading}
-                />
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="smtpUser" className="text-sm">SMTP Username</Label>
-              <Input 
-                id="smtpUser" 
-                value={settings.smtpUser}
-                onChange={(e) => handleInputChange('smtpUser', e.target.value)}
-                disabled={isLoading}
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="smtpPass" className="text-sm">SMTP Password</Label>
-              <Input 
-                id="smtpPass" 
-                type="password" 
-                placeholder="••••••••"
-                value={settings.smtpPass}
-                onChange={(e) => handleInputChange('smtpPass', e.target.value)}
-                disabled={isLoading}
-              />
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Security Settings */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center space-x-2">
-              <Shield className="h-5 w-5" />
-              <span>Bảo mật</span>
-            </CardTitle>
-            <CardDescription>
-              Cài đặt bảo mật hệ thống
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="flex items-center justify-between">
-                <Label htmlFor="twoFactor" className="text-sm">Xác thực 2 yếu tố</Label>
-                <Switch 
-                  id="twoFactor" 
-                  checked={settings.twoFactorAuth}
-                  onCheckedChange={(checked) => handleInputChange('twoFactorAuth', checked)}
-                  disabled={isLoading}
-                />
-              </div>
-
-              <div className="flex items-center justify-between">
-                <Label htmlFor="passwordPolicy" className="text-sm">Chính sách mật khẩu mạnh</Label>
-                <Switch 
-                  id="passwordPolicy" 
-                  checked={settings.passwordPolicy}
-                  onCheckedChange={(checked) => handleInputChange('passwordPolicy', checked)}
-                  disabled={isLoading}
-                />
-              </div>
-
-              <div className="flex items-center justify-between">
-                <Label htmlFor="requireSpecialChars" className="text-sm">Yêu cầu ký tự đặc biệt</Label>
-                <Switch 
-                  id="requireSpecialChars" 
-                  checked={settings.requireSpecialChars}
-                  onCheckedChange={(checked) => handleInputChange('requireSpecialChars', checked)}
-                  disabled={isLoading}
-                />
-              </div>
-
-              <div className="flex items-center justify-between">
-                <Label htmlFor="enableAuditLog" className="text-sm">Bật nhật ký kiểm toán</Label>
-                <Switch 
-                  id="enableAuditLog" 
-                  checked={settings.enableAuditLog}
-                  onCheckedChange={(checked) => handleInputChange('enableAuditLog', checked)}
-                  disabled={isLoading}
-                />
-              </div>
-            </div>
-
-            <Separator />
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="loginAttempts" className="text-sm">Giới hạn đăng nhập sai</Label>
-                <Input 
-                  id="loginAttempts" 
-                  type="number" 
-                  value={settings.loginAttempts}
-                  onChange={(e) => handleInputChange('loginAttempts', parseInt(e.target.value) || 5)}
-                  className="w-full"
-                  disabled={isLoading}
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="maxPasswordAge" className="text-sm">Tuổi mật khẩu tối đa (ngày)</Label>
-                <Input 
-                  id="maxPasswordAge" 
-                  type="number" 
-                  value={settings.maxPasswordAge}
-                  onChange={(e) => handleInputChange('maxPasswordAge', parseInt(e.target.value) || 90)}
-                  className="w-full"
-                  disabled={isLoading}
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="lockoutDuration" className="text-sm">Thời gian khóa (phút)</Label>
-                <Input 
-                  id="lockoutDuration" 
-                  type="number" 
-                  value={settings.lockoutDuration}
-                  onChange={(e) => handleInputChange('lockoutDuration', parseInt(e.target.value) || 15)}
-                  className="w-full"
-                  disabled={isLoading}
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="sessionConcurrency" className="text-sm">Phiên đăng nhập đồng thời</Label>
-                <Input 
-                  id="sessionConcurrency" 
-                  type="number" 
-                  value={settings.sessionConcurrency}
-                  onChange={(e) => handleInputChange('sessionConcurrency', parseInt(e.target.value) || 1)}
-                  className="w-full"
-                  disabled={isLoading}
-                />
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="ipWhitelist" className="text-sm">IP Whitelist (mỗi IP một dòng)</Label>
-              <Textarea 
-                id="ipWhitelist" 
-                value={settings.ipWhitelist}
-                onChange={(e) => handleInputChange('ipWhitelist', e.target.value)}
-                placeholder="192.168.1.1&#10;10.0.0.1"
-                rows={3}
-                disabled={isLoading}
-              />
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Notification Settings */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center space-x-2">
-              <Bell className="h-5 w-5" />
-              <span>Thông báo</span>
-            </CardTitle>
-            <CardDescription>
-              Cài đặt hệ thống thông báo
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <div className="flex items-center justify-between">
-              <Label htmlFor="emailNotifications" className="text-sm">Thông báo qua email</Label>
-              <Switch 
-                id="emailNotifications" 
-                checked={settings.emailNotifications}
-                onCheckedChange={(checked) => handleInputChange('emailNotifications', checked)}
-                disabled={isLoading}
-              />
-            </div>
-
-            <div className="flex items-center justify-between">
-              <Label htmlFor="pushNotifications" className="text-sm">Thông báo đẩy</Label>
-              <Switch 
-                id="pushNotifications" 
-                checked={settings.pushNotifications}
-                onCheckedChange={(checked) => handleInputChange('pushNotifications', checked)}
-                disabled={isLoading}
-              />
-            </div>
-
-            <div className="flex items-center justify-between">
-              <Label htmlFor="newsAlerts" className="text-sm">Thông báo tin tức mới</Label>
-              <Switch 
-                id="newsAlerts" 
-                checked={settings.newsAlerts}
-                onCheckedChange={(checked) => handleInputChange('newsAlerts', checked)}
-                disabled={isLoading}
-              />
-            </div>
-
-            <div className="flex items-center justify-between">
-              <Label htmlFor="systemAlerts" className="text-sm">Thông báo hệ thống</Label>
-              <Switch 
-                id="systemAlerts" 
-                checked={settings.systemAlerts}
-                onCheckedChange={(checked) => handleInputChange('systemAlerts', checked)}
-                disabled={isLoading}
-              />
-            </div>
-          </CardContent>
-        </Card>
       </div>
 
       {/* WordPress Test - Quick Test */}
@@ -656,6 +353,9 @@ export default function SettingsPage() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Settings Sync */}
+      <SettingsSync />
 
       {/* WordPress Sync */}
       <Card>

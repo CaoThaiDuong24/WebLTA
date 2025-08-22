@@ -20,20 +20,26 @@ const getWordPressConfig = () => {
   }
 }
 
-// Lấy cấu hình plugin
+// Lấy cấu hình plugin (luôn decrypt để hiển thị plain text)
 const getPluginConfig = () => {
   try {
     if (fs.existsSync(PLUGIN_CONFIG_FILE_PATH)) {
       const configData = fs.readFileSync(PLUGIN_CONFIG_FILE_PATH, 'utf8')
       const cfg = JSON.parse(configData)
-      // Decrypt apiKey if encrypted
+      // Luôn decrypt apiKey để hiển thị plain text trên UI
       if (typeof cfg.apiKey === 'string' && cfg.apiKey.startsWith('ENCRYPTED:')) {
-        try { cfg.apiKey = decryptSensitiveData(cfg.apiKey.replace('ENCRYPTED:', '')) } catch {}
+        try { 
+          cfg.apiKey = decryptSensitiveData(cfg.apiKey.replace('ENCRYPTED:', '')) 
+        } catch (error) {
+          console.error('Error decrypting API key:', error)
+          // Nếu decrypt fail, tạo key mới
+          cfg.apiKey = 'lta-plugin-' + Math.random().toString(36).substr(2, 16)
+        }
       }
       return cfg
     }
     return {
-      apiKey: 'lta-plugin-key-' + Math.random().toString(36).substr(2, 9),
+      apiKey: 'lta-plugin-' + Math.random().toString(36).substr(2, 16),
       webhookUrl: '',
       autoSync: true,
       syncDirection: 'bidirectional' // 'wordpress-to-lta', 'lta-to-wordpress', 'bidirectional'
@@ -70,10 +76,11 @@ export async function GET(request: NextRequest) {
     const pluginConfig = getPluginConfig()
     const wordpressConfig = getWordPressConfig()
     
+    // API key đã được decrypt trong getPluginConfig(), luôn hiển thị plain text
     return NextResponse.json({
       success: true,
       plugin: {
-        apiKey: pluginConfig.apiKey,
+        apiKey: pluginConfig.apiKey, // Plain text cho UI
         webhookUrl: pluginConfig.webhookUrl,
         autoSync: pluginConfig.autoSync,
         syncDirection: pluginConfig.syncDirection
@@ -135,7 +142,8 @@ export async function POST(request: NextRequest) {
 async function handleGenerateApiKey() {
   try {
     const pluginConfig = getPluginConfig()
-    pluginConfig.apiKey = 'lta-plugin-key-' + Math.random().toString(36).substr(2, 9)
+    // Tạo API key ngắn gọn, dễ đọc và copy
+    pluginConfig.apiKey = 'lta-plugin-' + Math.random().toString(36).substr(2, 16)
     savePluginConfig(pluginConfig)
     
     return NextResponse.json({
