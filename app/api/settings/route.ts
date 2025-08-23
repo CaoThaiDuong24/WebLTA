@@ -57,11 +57,30 @@ interface SystemSettings {
 
 export async function GET(request: NextRequest) {
   try {
-    const settings = loadSettings()
-    return NextResponse.json({
-      success: true,
-      settings: settings
-    })
+    // Ưu tiên lấy từ WordPress plugin DB nếu có API key
+    const pluginConfigResp = await fetch(`${request.nextUrl.origin}/api/wordpress/plugin-auth`, { method: 'GET' })
+    let settingsFromPlugin: any = null
+    if (pluginConfigResp.ok) {
+      const pluginInfo = await pluginConfigResp.json()
+      const apiKey = pluginInfo?.plugin?.apiKey
+      // Gọi AJAX plugin để lấy settings trong WP DB
+      if (apiKey) {
+        const ajaxResp = await fetch(`${pluginInfo?.wordpress?.siteUrl?.replace(/\/$/, '') || ''}/wp-admin/admin-ajax.php?action=lta_settings_get`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ apiKey }),
+          // timeout nhẹ để không chặn UI nếu WP chậm
+          signal: AbortSignal.timeout(8000)
+        }).catch(() => null as any)
+        if (ajaxResp && ajaxResp.ok) {
+          const pluginData = await ajaxResp.json()
+          if (pluginData?.success) settingsFromPlugin = pluginData.data
+        }
+      }
+    }
+
+    const settings = settingsFromPlugin || loadSettings()
+    return NextResponse.json({ success: true, settings })
   } catch (error) {
     console.error('Error getting settings:', error)
     return NextResponse.json(
@@ -96,9 +115,34 @@ export async function POST(request: NextRequest) {
       }
     }
     
-    // Lưu settings chung
-    const currentSettings = loadSettings()
-    const updatedSettings = { ...currentSettings, ...body }
+    // Lưu settings chung: ghi vào WP DB qua plugin nếu có API key; fallback local
+    let updatedSettings = { ...(loadSettings() as any), ...body }
+    try {
+      const pluginInfoResp = await fetch(`${request.nextUrl.origin}/api/wordpress/plugin-auth`, { method: 'GET' })
+      if (pluginInfoResp.ok) {
+        const pluginInfo = await pluginInfoResp.json()
+        const apiKey = pluginInfo?.plugin?.apiKey
+        const siteUrl = pluginInfo?.wordpress?.siteUrl
+        if (apiKey && siteUrl) {
+          const ajaxResp = await fetch(`${String(siteUrl).replace(/\/$/, '')}/wp-admin/admin-ajax.php?action=lta_settings_save`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ apiKey, settings: updatedSettings }),
+            signal: AbortSignal.timeout(12000)
+          })
+          if (ajaxResp.ok) {
+            const saved = await ajaxResp.json()
+            if (saved?.success && saved?.data) {
+              updatedSettings = { ...updatedSettings, ...saved.data }
+            }
+          }
+        }
+      }
+    } catch (e) {
+      // Bỏ qua lỗi WP, vẫn lưu local để không mất cấu hình
+    }
+
+    // Luôn lưu bản local như backup
     saveSettings(updatedSettings)
     
     return NextResponse.json({
@@ -128,8 +172,27 @@ export async function PUT(request: NextRequest) {
       )
     }
     
-    // Update specific setting using the storage function
-    const updatedSettings = updateSetting(key as keyof SystemSettings, value)
+    // Cập nhật: gọi WP plugin trước, sau đó lưu local như backup
+    let updatedSettings = updateSetting(key as keyof SystemSettings, value)
+    try {
+      const pluginInfoResp = await fetch(`${request.nextUrl.origin}/api/wordpress/plugin-auth`, { method: 'GET' })
+      if (pluginInfoResp.ok) {
+        const pluginInfo = await pluginInfoResp.json()
+        const apiKey = pluginInfo?.plugin?.apiKey
+        const siteUrl = pluginInfo?.wordpress?.siteUrl
+        if (apiKey && siteUrl) {
+          const ajaxResp = await fetch(`${String(siteUrl).replace(/\/$/, '')}/wp-admin/admin-ajax.php?action=lta_settings_save`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ apiKey, settings: { [key]: value } }),
+            signal: AbortSignal.timeout(8000)
+          })
+          if (ajaxResp.ok) {
+            // Không cần dùng response, WP đã nhận được
+          }
+        }
+      }
+    } catch {}
     
     console.log('PUT /api/settings - Updated systemSettings:', {
       ...updatedSettings,
@@ -153,8 +216,25 @@ export async function PUT(request: NextRequest) {
 
 export async function DELETE() {
   try {
-    // Reset to defaults using the storage function
+    // Reset local
     const resetSettingsData = resetSettings()
+    // Đồng thời xóa ở WP DB (đặt về rỗng) nếu có API key
+    try {
+      const resp = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || ''}/api/wordpress/plugin-auth`, { method: 'GET' })
+      if (resp?.ok) {
+        const info = await resp.json()
+        const apiKey = info?.plugin?.apiKey
+        const siteUrl = info?.wordpress?.siteUrl
+        if (apiKey && siteUrl) {
+          await fetch(`${String(siteUrl).replace(/\/$/, '')}/wp-admin/admin-ajax.php?action=lta_settings_save`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ apiKey, settings: {} }),
+            signal: AbortSignal.timeout(8000)
+          }).catch(() => null)
+        }
+      }
+    } catch {}
     
     return NextResponse.json({
       success: true,

@@ -37,45 +37,10 @@ interface NewsItem {
   lastSyncDate?: string
 }
 
-// Đường dẫn đến file JSON lưu tin tức
-const NEWS_FILE_PATH = path.join(process.cwd(), 'data', 'news.json')
-const TRASH_FILE_PATH = path.join(process.cwd(), 'data', 'trash-news.json')
+// Đường dẫn cấu hình plugin (vẫn dùng để đọc apiKey, nhưng KHÔNG lưu news local nữa)
 const PLUGIN_CONFIG_FILE_PATH = path.join(process.cwd(), 'data', 'plugin-config.json')
 
-// Đảm bảo thư mục data tồn tại
-const ensureDataDirectory = () => {
-  const dataDir = path.dirname(NEWS_FILE_PATH)
-  if (!fs.existsSync(dataDir)) {
-    fs.mkdirSync(dataDir, { recursive: true })
-  }
-}
-
-// Đọc danh sách tin tức từ file
-const loadNews = (): NewsItem[] => {
-  try {
-    ensureDataDirectory()
-    if (!fs.existsSync(NEWS_FILE_PATH)) {
-      fs.writeFileSync(NEWS_FILE_PATH, '[]')
-      return []
-    }
-    const data = fs.readFileSync(NEWS_FILE_PATH, 'utf8')
-    return JSON.parse(data)
-  } catch (error) {
-    console.error('Error loading news:', error)
-    return []
-  }
-}
-
-// Lưu danh sách tin tức vào file
-const saveNews = (news: NewsItem[]) => {
-  try {
-    ensureDataDirectory()
-    fs.writeFileSync(NEWS_FILE_PATH, JSON.stringify(news, null, 2))
-  } catch (error) {
-    console.error('Error saving news:', error)
-    throw error
-  }
-}
+// KHÔNG còn load/save tin tức local
 
 // Tạo ID duy nhất
 const generateId = (): string => {
@@ -98,11 +63,8 @@ const generateSlug = (title: string): string => {
     .replace(/^-+|-+$/g, '')
 }
 
-// Kiểm tra slug đã tồn tại chưa
-const isSlugExists = (slug: string, excludeId?: string): boolean => {
-  const news = loadNews()
-  return news.some(item => item.slug === slug && item.id !== excludeId)
-}
+// KHÔNG kiểm tra slug trên local nữa (WordPress xử lý trùng)
+const isSlugExists = (_slug: string, _excludeId?: string): boolean => false
 
 // Lấy cấu hình Plugin đồng bộ WordPress
 const getPluginConfig = () => {
@@ -128,121 +90,35 @@ const getPluginConfig = () => {
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
-    const status = searchParams.get('status')
-    const trashed = searchParams.get('trashed') === 'true'
-    const category = searchParams.get('category')
-    const featured = searchParams.get('featured')
     const limit = parseInt(searchParams.get('limit') || '50')
     const page = parseInt(searchParams.get('page') || '1')
+    const status = searchParams.get('status') || 'all' // Thêm parameter status
 
-    // Nếu yêu cầu danh sách thùng rác, trả về từ file local
-    if (trashed) {
-      try {
-        if (fs.existsSync(TRASH_FILE_PATH)) {
-          const trashData = fs.readFileSync(TRASH_FILE_PATH, 'utf8')
-          const list = JSON.parse(trashData)
-          return NextResponse.json({ 
-            success: true, 
-            data: list, 
-            pagination: { page, limit, total: list.length, totalPages: Math.ceil(list.length / limit) } 
-          })
-        } else {
-          return NextResponse.json({ 
-            success: true, 
-            data: [], 
-            pagination: { page, limit, total: 0, totalPages: 0 } 
-          })
-        }
-      } catch (e) {
-        return NextResponse.json({ error: 'Không thể đọc thùng rác' }, { status: 500 })
-      }
+    const pluginConfig = getPluginConfig()
+    if (!pluginConfig?.apiKey) {
+      return NextResponse.json(
+        { error: 'Plugin chưa được cấu hình' },
+        { status: 400 }
+      )
     }
 
-    // Load local news data
-    let news = loadNews()
-    
-    // Chỉ đồng bộ với WordPress khi cần thiết (có thể thêm cache sau)
-    try {
-      const pluginConfig = getPluginConfig()
-      if (pluginConfig?.apiKey) {
-        // Fetch posts from WordPress với timeout
-        const response = await fetch(`${request.nextUrl.origin}/api/wordpress/posts`, {
-          method: 'GET',
-          headers: { 'Content-Type': 'application/json' },
-          signal: AbortSignal.timeout(10000) // 10 giây timeout
-        })
-
-        if (response.ok) {
-          const result = await response.json()
-          const wordpressPosts = result.data || []
-          
-          // Tạo map của WordPress posts để so sánh
-          const wpPostMap = new Map()
-          wordpressPosts.forEach((post: any) => {
-            wpPostMap.set(post.wordpressId || post.id, post)
-          })
-          
-          // Lọc local news, chỉ giữ lại những tin tức còn tồn tại ở WordPress
-          const filteredNews = news.filter((localPost: any) => {
-            const wpId = localPost.wordpressId || localPost.id?.replace('wp_', '')
-            return wpPostMap.has(parseInt(wpId))
-          })
-          
-          // Cập nhật local data nếu có thay đổi
-          if (filteredNews.length !== news.length) {
-            saveNews(filteredNews)
-            news = filteredNews
-          }
-          
-          // Thêm tin tức mới từ WordPress nếu chưa có trong local
-          wordpressPosts.forEach((wpPost: any) => {
-            const wpId = wpPost.wordpressId || wpPost.id
-            const existsInLocal = news.some((localPost: any) => 
-              (localPost.wordpressId || localPost.id?.replace('wp_', '')) === wpId
-            )
-            
-            if (!existsInLocal) {
-              news.push(wpPost)
-            }
-          })
-        }
-      }
-    } catch (wordpressError) {
-      // Sử dụng local data nếu có lỗi đồng bộ
-      console.log('Using local data due to sync error')
-    }
-    
-    // Lọc theo trạng thái
-    if (status) {
-      news = news.filter(item => item.status === status)
-    }
-
-    // Lọc theo danh mục
-    if (category) {
-      news = news.filter(item => item.category === category)
-    }
-
-    // Lọc tin nổi bật
-    if (featured === 'true') {
-      news = news.filter(item => item.featured)
-    }
-
-    // Sắp xếp theo thứ tự mới nhất trước
-    news.sort((a, b) => {
-      const dateA = new Date(b.publishedAt || b.updatedAt || b.createdAt).getTime()
-      const dateB = new Date(a.publishedAt || a.updatedAt || a.createdAt).getTime()
-      return dateA - dateB
+    // Lấy danh sách bài viết trực tiếp từ WordPress thông qua endpoint nội bộ
+    const response = await fetch(`${request.nextUrl.origin}/api/wordpress/posts?status=${status}`, {
+      method: 'GET',
+      headers: { 'Content-Type': 'application/json' },
+      signal: AbortSignal.timeout(10000)
     })
 
-    // Cập nhật local data với thứ tự đúng
-    if (news.length > 0) {
-      saveNews(news)
+    if (!response.ok) {
+      const errText = await response.text()
+      return NextResponse.json({ error: 'Không thể lấy tin tức từ WordPress', details: errText }, { status: response.status })
     }
 
-    // Phân trang
+    const result = await response.json()
+    const allNews = result.data || []
     const startIndex = (page - 1) * limit
     const endIndex = startIndex + limit
-    const paginatedNews = news.slice(startIndex, endIndex)
+    const paginatedNews = allNews.slice(startIndex, endIndex)
 
     return NextResponse.json({
       success: true,
@@ -250,10 +126,10 @@ export async function GET(request: NextRequest) {
       pagination: {
         page,
         limit,
-        total: news.length,
-        totalPages: Math.ceil(news.length / limit)
+        total: allNews.length,
+        totalPages: Math.ceil(allNews.length / limit)
       },
-      source: 'local'
+      source: 'wordpress'
     })
 
   } catch (error) {
@@ -387,6 +263,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (!resp.ok || !wordpressResult?.success) {
+      // Không xử lý trùng tiêu đề tại backend nữa. Trả nguyên lỗi từ WordPress/plugin
       return NextResponse.json(
         { 
           error: wordpressResult?.error || 'Không thể đăng bài qua plugin', 
@@ -434,12 +311,8 @@ export async function POST(request: NextRequest) {
       lastSyncDate: new Date().toISOString()
     }
 
-    // Save to local storage
-    const news = loadNews()
-    news.push(newsItem)
-    saveNews(news)
-
-    console.log('✅ WordPress publish successful')
+    // KHÔNG lưu local nữa, chỉ trả về kết quả từ WordPress
+    console.log('✅ WordPress publish successful (no local save)')
     return NextResponse.json({
       success: true,
       message: 'Tin tức đã được đăng lên WordPress thành công',

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { decryptSensitiveData } from '@/lib/security'
+import { getWordPressConfig } from '@/lib/wordpress-config'
 import fs from 'fs'
 import path from 'path'
 
@@ -28,6 +29,9 @@ const getPluginConfig = () => {
 
 export async function GET(request: NextRequest) {
   try {
+    const { searchParams } = new URL(request.url)
+    const status = searchParams.get('status') || 'all'
+    
     const pluginConfig = getPluginConfig()
     if (!pluginConfig?.apiKey) {
       return NextResponse.json(
@@ -36,25 +40,64 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    // Fetch posts from WordPress via plugin với timeout
-    const response = await fetch(`${request.nextUrl.origin}/api/wordpress/search-posts`, {
-      method: 'GET',
+    // Fetch posts from WordPress via plugin AJAX
+    const wordpressConfig = getWordPressConfig()
+    if (!wordpressConfig?.siteUrl) {
+      return NextResponse.json(
+        { error: 'WordPress chưa được cấu hình' },
+        { status: 400 }
+      )
+    }
+
+    const ajaxUrl = `${wordpressConfig.siteUrl.replace(/\/$/, '')}/wp-admin/admin-ajax.php?action=lta_posts_get`
+    
+    const response = await fetch(ajaxUrl, {
+      method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      signal: AbortSignal.timeout(8000) // 8 giây timeout
+      body: JSON.stringify({
+        apiKey: pluginConfig.apiKey,
+        status: status === 'published' ? 'publish' : status === 'draft' ? 'draft' : 'publish,draft',
+        per_page: 50,
+        page: 1
+      }),
+      signal: AbortSignal.timeout(15000) // tăng timeout để tránh 502 do chậm
     })
 
     if (!response.ok) {
-      const error = await response.json()
+      // Đọc text an toàn, thử parse JSON nếu có
+      const raw = await response.text()
+      let parsed: any = null
+      try { parsed = JSON.parse(raw) } catch {}
       return NextResponse.json(
-        { error: 'Không thể lấy posts từ WordPress', details: error },
+        { error: 'Không thể lấy posts từ WordPress', details: parsed || raw },
         { status: response.status }
       )
     }
 
-    const result = await response.json()
+    // Parse JSON an toàn
+    const rawText = await response.text()
+    let result: any
+    try {
+      result = JSON.parse(rawText)
+    } catch (e) {
+      return NextResponse.json(
+        { error: 'WordPress trả dữ liệu không hợp lệ', raw: rawText },
+        { status: 502 }
+      )
+    }
     
-    // Transform WordPress posts to our format
-    const transformedPosts = (result.data || []).map((post: any) => ({
+    // Transform WordPress posts to our format và deduplicate
+    const posts = result.data || []
+    
+    // Deduplicate by ID để tránh hiển thị trùng lặp
+    const uniquePosts = posts.filter((post: any, index: number, self: any[]) => 
+      index === self.findIndex((p: any) => p.id === post.id)
+    )
+    
+    // Giới hạn số lượng posts để tránh quá tải
+    const limitedPosts = uniquePosts.slice(0, 50)
+    
+    const transformedPosts = limitedPosts.map((post: any) => ({
       id: `wp_${post.id}`,
       title: post.title,
       slug: post.slug,

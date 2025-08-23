@@ -1,10 +1,32 @@
 import { NextRequest, NextResponse } from 'next/server'
 import fs from 'fs'
 import path from 'path'
+import { decryptSensitiveData } from '@/lib/security'
 
-// Đường dẫn đến file dữ liệu
-const newsDataPath = path.join(process.cwd(), 'data', 'news.json')
+// Đường dẫn đến file cấu hình
+const PLUGIN_CONFIG_FILE_PATH = path.join(process.cwd(), 'data', 'plugin-config.json')
 const settingsDataPath = path.join(process.cwd(), 'data', 'settings.json')
+
+// Lấy cấu hình Plugin đồng bộ WordPress
+const getPluginConfig = () => {
+  try {
+    if (fs.existsSync(PLUGIN_CONFIG_FILE_PATH)) {
+      const configData = fs.readFileSync(PLUGIN_CONFIG_FILE_PATH, 'utf8')
+      const config = JSON.parse(configData)
+      
+      // Decrypt API key if needed
+      if (config.apiKey && config.apiKey.startsWith('ENCRYPTED:')) {
+        config.apiKey = decryptSensitiveData(config.apiKey.replace('ENCRYPTED:', ''))
+      }
+      
+      return config
+    }
+    return null
+  } catch (error) {
+    console.error('Error loading Plugin config:', error)
+    return null
+  }
+}
 
 // Function to strip HTML tags
 function stripHtmlTags(html: string): string {
@@ -38,13 +60,31 @@ function stripHtmlTags(html: string): string {
   return cleaned
 }
 
-// Đọc dữ liệu từ file JSON
-function readJsonFile(filePath: string) {
+// Lấy dữ liệu tin tức từ WordPress
+async function getNewsFromWordPress(request: NextRequest) {
   try {
-    const fileContent = fs.readFileSync(filePath, 'utf-8')
-    return JSON.parse(fileContent)
+    const pluginConfig = getPluginConfig()
+    if (!pluginConfig?.apiKey) {
+      console.log('Plugin chưa được cấu hình, trả về dữ liệu rỗng')
+      return []
+    }
+
+    // Lấy danh sách bài viết từ WordPress
+    const response = await fetch(`${request.nextUrl.origin}/api/wordpress/posts`, {
+      method: 'GET',
+      headers: { 'Content-Type': 'application/json' },
+      signal: AbortSignal.timeout(10000)
+    })
+
+    if (!response.ok) {
+      console.error('Không thể lấy tin tức từ WordPress:', response.status)
+      return []
+    }
+
+    const result = await response.json()
+    return result.data || []
   } catch (error) {
-    console.error(`Error reading file ${filePath}:`, error)
+    console.error('Error fetching news from WordPress:', error)
     return []
   }
 }
@@ -168,9 +208,19 @@ function getPerformanceData(newsData: any[]) {
 
 export async function GET(request: NextRequest) {
   try {
-    // Đọc dữ liệu từ file
-    const newsData = readJsonFile(newsDataPath)
-    const settingsData = readJsonFile(settingsDataPath)
+    // Lấy dữ liệu từ WordPress
+    const newsData = await getNewsFromWordPress(request)
+    
+    // Đọc settings từ file local (nếu có)
+    let settingsData = {}
+    try {
+      if (fs.existsSync(settingsDataPath)) {
+        const settingsContent = fs.readFileSync(settingsDataPath, 'utf-8')
+        settingsData = JSON.parse(settingsContent)
+      }
+    } catch (error) {
+      console.error('Error reading settings:', error)
+    }
     
     // Tính toán thống kê
     const stats = calculateStats(newsData)

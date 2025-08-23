@@ -1,0 +1,7 @@
+{
+  "apiKey": "lta_fd72dcee3231f9728709a9ebf375cef8ba62e8423bbb24bd5607286af9fe9c33",
+  "webhookUrl": "https://wp2.ltacv.com/api",
+  "autoSync": true,
+  "syncDirection": "bidirectional",
+  "updatedAt": "2025-08-23T03:25:10.672Z"
+}

@@ -2,7 +2,7 @@
 /**
  * Plugin Name: LTA News Sync
  * Description: Tạo bài viết WordPress từ hệ thống LTA thông qua AJAX với API Key.
- * Version: 1.1.1
+ * Version: 1.3.0
  * Author: LTA Team
  */
 
@@ -12,6 +12,7 @@ if (!defined('ABSPATH')) {
 
 // Options
 const LTA_NEWS_SYNC_OPTION_KEY = 'lta_news_sync_settings';
+const LTA_NEWS_SYNC_TABLE = 'lta_settings';
 
 function lta_news_sync_default_settings() {
     return array(
@@ -21,39 +22,49 @@ function lta_news_sync_default_settings() {
 }
 
 function lta_news_sync_get_settings() {
-    $settings = get_option(LTA_NEWS_SYNC_OPTION_KEY, array());
+    global $wpdb;
+    $table = $wpdb->prefix . LTA_NEWS_SYNC_TABLE;
+
+    $db_settings = array();
+    if ($wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s', $table)) === $table) {
+        $rows = $wpdb->get_results("SELECT setting_key, setting_value FROM {$table}", ARRAY_A);
+        foreach ((array) $rows as $row) {
+            $db_settings[$row['setting_key']] = maybe_unserialize($row['setting_value']);
+        }
+    }
+
+    $opt_settings = get_option(LTA_NEWS_SYNC_OPTION_KEY, array());
     $defaults = lta_news_sync_default_settings();
-    return wp_parse_args($settings, $defaults);
+
+    // Ưu tiên DB > options > defaults
+    return wp_parse_args($db_settings, wp_parse_args($opt_settings, $defaults));
 }
 
 function lta_news_sync_update_settings($new_settings) {
+    global $wpdb;
+    $table = $wpdb->prefix . LTA_NEWS_SYNC_TABLE;
     $settings = lta_news_sync_get_settings();
     $merged = wp_parse_args($new_settings, $settings);
-    update_option(LTA_NEWS_SYNC_OPTION_KEY, $merged);
-    return $merged;
-}
 
-// Send webhook to external URL if configured
-function lta_news_sync_send_webhook($action, $post_payload) {
-    $settings = lta_news_sync_get_settings();
-    $webhook_url = isset($settings['webhook_url']) ? esc_url_raw($settings['webhook_url']) : '';
-    if (empty($webhook_url)) {
-        return false;
+    // Lưu xuống options
+    update_option(LTA_NEWS_SYNC_OPTION_KEY, $merged);
+
+    // Lưu xuống DB table nếu tồn tại
+    if ($wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s', $table)) === $table) {
+        foreach ($merged as $k => $v) {
+            $wpdb->replace(
+                $table,
+                array(
+                    'setting_key' => sanitize_key($k),
+                    'setting_value' => maybe_serialize($v),
+                    'updated_at' => current_time('mysql')
+                ),
+                array('%s','%s','%s')
+            );
+        }
     }
 
-    $body = array(
-        'action' => $action,
-        'post'   => $post_payload,
-    );
-
-    $args = array(
-        'headers' => array('Content-Type' => 'application/json'),
-        'body'    => wp_json_encode($body),
-        'timeout' => 10,
-    );
-
-    $response = wp_remote_post($webhook_url, $args);
-    return !is_wp_error($response);
+    return $merged;
 }
 
 // Admin settings page
@@ -113,8 +124,10 @@ function lta_news_sync_render_settings_page() {
             </table>
             <?php submit_button('Lưu cấu hình', 'primary', 'lta_news_sync_save'); ?>
         </form>
-        <h2>AJAX Endpoint</h2>
-        <p>URL: <code><?php echo esc_url(admin_url('admin-ajax.php?action=lta_news_create')); ?></code></p>
+        <h2>AJAX Endpoints</h2>
+        <p>Tạo bài: <code><?php echo esc_url(admin_url('admin-ajax.php?action=lta_news_create')); ?></code></p>
+        <p>Cập nhật bài: <code><?php echo esc_url(admin_url('admin-ajax.php?action=lta_news_update')); ?></code></p>
+        <p>Xóa bài: <code><?php echo esc_url(admin_url('admin-ajax.php?action=lta_news_delete')); ?></code></p>
     </div>
     <?php
 }
@@ -125,12 +138,13 @@ function lta_news_sync_attach_media_from_base64($data_url, $post_id) {
         return 0;
     }
 
-    if (!function_exists('wp_handle_sideload')) {
+    // Tối ưu: Load includes một lần duy nhất
+    static $includes_loaded = false;
+    if (!$includes_loaded) {
         require_once ABSPATH . 'wp-admin/includes/file.php';
-    }
-    if (!function_exists('wp_insert_attachment')) {
         require_once ABSPATH . 'wp-admin/includes/image.php';
         require_once ABSPATH . 'wp-admin/includes/media.php';
+        $includes_loaded = true;
     }
 
     // Parse data URL
@@ -172,11 +186,15 @@ function lta_news_sync_attach_media_from_base64($data_url, $post_id) {
 }
 
 function lta_news_sync_attach_media_from_url($url, $post_id) {
-    if (!function_exists('media_sideload_image')) {
+    // Tối ưu: Load includes một lần duy nhất
+    static $includes_loaded = false;
+    if (!$includes_loaded) {
         require_once ABSPATH . 'wp-admin/includes/media.php';
         require_once ABSPATH . 'wp-admin/includes/file.php';
         require_once ABSPATH . 'wp-admin/includes/image.php';
+        $includes_loaded = true;
     }
+    
     $attachment_id = 0;
     $html = media_sideload_image(esc_url_raw($url), $post_id, null, 'html');
     if (!is_wp_error($html)) {
@@ -291,9 +309,12 @@ function lta_news_sync_ajax_create_post() {
         }
     }
 
-    // Sideload additional images as attachments but không thêm vào content
+    // Tối ưu: Chỉ xử lý hình ảnh nếu thực sự cần thiết
     if (!empty($additional_images)) {
-        foreach ($additional_images as $img) {
+        // Giới hạn số lượng hình ảnh để tăng tốc
+        $limited_images = array_slice($additional_images, 0, 10);
+        
+        foreach ($limited_images as $img) {
             if (is_string($img) && strpos($img, 'data:') === 0) {
                 lta_news_sync_attach_media_from_base64($img, $post_id);
             } elseif (is_string($img) && filter_var($img, FILTER_VALIDATE_URL)) {
@@ -303,27 +324,14 @@ function lta_news_sync_ajax_create_post() {
     }
 
     $link = get_permalink($post_id);
-    $payload = array(
+    wp_send_json(array(
         'success' => true,
         'data' => array(
             'id' => $post_id,
             'link' => $link,
             'status' => get_post_status($post_id),
         )
-    );
-
-    // Webhook notify
-    lta_news_sync_send_webhook('post_created', array(
-        'id' => $post_id,
-        'title' => get_the_title($post_id),
-        'slug' => get_post_field('post_name', $post_id),
-        'status' => get_post_status($post_id),
-        'featured_media' => get_post_thumbnail_id($post_id),
-        'content' => get_post_field('post_content', $post_id),
-        'excerpt' => get_post_field('post_excerpt', $post_id)
     ));
-
-    wp_send_json($payload);
 }
 
 // AJAX handler: update post
@@ -386,9 +394,12 @@ function lta_news_sync_ajax_update_post() {
         }
     }
 
-    // Sideload additional images as attachments
+    // Tối ưu: Chỉ xử lý hình ảnh nếu thực sự cần thiết
     if (!empty($additional_images)) {
-        foreach ($additional_images as $img) {
+        // Giới hạn số lượng hình ảnh để tăng tốc
+        $limited_images = array_slice($additional_images, 0, 10);
+        
+        foreach ($limited_images as $img) {
             if (is_string($img) && strpos($img, 'data:') === 0) {
                 lta_news_sync_attach_media_from_base64($img, $post_id);
             } elseif (is_string($img) && filter_var($img, FILTER_VALIDATE_URL)) {
@@ -398,41 +409,194 @@ function lta_news_sync_ajax_update_post() {
     }
 
     $link = get_permalink($post_id);
-    $payload = array(
+    wp_send_json(array(
         'success' => true,
         'data' => array(
             'id' => $post_id,
             'link' => $link,
             'status' => get_post_status($post_id),
         )
+    ));
+}
+
+// AJAX handler: delete post
+add_action('wp_ajax_nopriv_lta_news_delete', 'lta_news_sync_ajax_delete_post');
+add_action('wp_ajax_lta_news_delete', 'lta_news_sync_ajax_delete_post');
+
+function lta_news_sync_ajax_delete_post() {
+    $raw = file_get_contents('php://input');
+    $data = json_decode($raw, true);
+    if (!is_array($data)) {
+        // Also support form-encoded fallback
+        $data = $_POST;
+    }
+
+    $settings = lta_news_sync_get_settings();
+    $api_key = isset($data['apiKey']) ? sanitize_text_field($data['apiKey']) : '';
+    if (empty($settings['api_key']) || $api_key !== $settings['api_key']) {
+        wp_send_json(array('success' => false, 'error' => 'Unauthorized'), 401);
+    }
+
+    $post_id = isset($data['id']) ? intval($data['id']) : 0;
+    if (!$post_id || get_post_type($post_id) !== 'post') {
+        wp_send_json(array('success' => false, 'error' => 'Invalid post id'), 400);
+    }
+
+    $res = wp_delete_post($post_id, true);
+    if (!$res) {
+        wp_send_json(array('success' => false, 'error' => 'Delete failed'), 500);
+    }
+
+    wp_send_json(array('success' => true, 'data' => array('id' => $post_id)));
+}
+
+// AJAX: save/get settings from app to WP DB (no REST)
+add_action('wp_ajax_nopriv_lta_settings_save', 'lta_news_sync_ajax_settings_save');
+add_action('wp_ajax_lta_settings_save', 'lta_news_sync_ajax_settings_save');
+add_action('wp_ajax_nopriv_lta_settings_get', 'lta_news_sync_ajax_settings_get');
+add_action('wp_ajax_lta_settings_get', 'lta_news_sync_ajax_settings_get');
+
+// AJAX: get posts from WordPress (no REST)
+add_action('wp_ajax_nopriv_lta_posts_get', 'lta_news_sync_ajax_get_posts');
+add_action('wp_ajax_lta_posts_get', 'lta_news_sync_ajax_get_posts');
+
+function lta_news_sync_ajax_settings_save() {
+    $raw = file_get_contents('php://input');
+    $data = json_decode($raw, true);
+    if (!is_array($data)) { $data = $_POST; }
+
+    $settings = lta_news_sync_get_settings();
+    $api_key = isset($data['apiKey']) ? sanitize_text_field($data['apiKey']) : '';
+    if (empty($settings['api_key']) || $api_key !== $settings['api_key']) {
+        wp_send_json(array('success' => false, 'error' => 'Unauthorized'), 401);
+    }
+
+    $pairs = isset($data['settings']) && is_array($data['settings']) ? $data['settings'] : array();
+    $clean = array();
+    foreach ($pairs as $k => $v) {
+        $clean[sanitize_key($k)] = is_scalar($v) ? sanitize_text_field((string) $v) : wp_kses_post(json_encode($v));
+    }
+    lta_news_sync_update_settings($clean);
+    wp_send_json(array('success' => true, 'data' => $clean));
+}
+
+function lta_news_sync_ajax_settings_get() {
+    $raw = file_get_contents('php://input');
+    $data = json_decode($raw, true);
+    if (!is_array($data)) { $data = $_POST; }
+
+    $settings = lta_news_sync_get_settings();
+    $api_key = isset($data['apiKey']) ? sanitize_text_field($data['apiKey']) : '';
+    if (empty($settings['api_key']) || $api_key !== $settings['api_key']) {
+        wp_send_json(array('success' => false, 'error' => 'Unauthorized'), 401);
+    }
+
+    wp_send_json(array('success' => true, 'data' => $settings));
+}
+
+// AJAX handler: get posts
+function lta_news_sync_ajax_get_posts() {
+    $raw = file_get_contents('php://input');
+    $data = json_decode($raw, true);
+    if (!is_array($data)) { $data = $_POST; }
+
+    $settings = lta_news_sync_get_settings();
+    $api_key = isset($data['apiKey']) ? sanitize_text_field($data['apiKey']) : '';
+    if (empty($settings['api_key']) || $api_key !== $settings['api_key']) {
+        wp_send_json(array('success' => false, 'error' => 'Unauthorized'), 401);
+    }
+
+    // Get parameters
+    $status = isset($data['status']) ? sanitize_text_field($data['status']) : 'publish,draft';
+    $per_page = isset($data['per_page']) ? intval($data['per_page']) : 10;
+    $page = isset($data['page']) ? intval($data['page']) : 1;
+    $search = isset($data['search']) ? sanitize_text_field($data['search']) : '';
+
+    // Build query args
+    $args = array(
+        'post_type' => 'post',
+        'post_status' => explode(',', $status),
+        'posts_per_page' => $per_page,
+        'paged' => $page,
+        'orderby' => 'date',
+        'order' => 'DESC'
     );
 
-    lta_news_sync_send_webhook('post_updated', array(
-        'id' => $post_id,
-        'title' => get_the_title($post_id),
-        'slug' => get_post_field('post_name', $post_id),
-        'status' => get_post_status($post_id),
-        'featured_media' => get_post_thumbnail_id($post_id),
-        'content' => get_post_field('post_content', $post_id),
-        'excerpt' => get_post_field('post_excerpt', $post_id)
-    ));
+    if (!empty($search)) {
+        $args['s'] = $search;
+    }
 
-    wp_send_json($payload);
+    $query = new WP_Query($args);
+    $posts = array();
+
+    if ($query->have_posts()) {
+        while ($query->have_posts()) {
+            $query->the_post();
+            $post_id = get_the_ID();
+            
+            // Get featured image
+            $featured_image = '';
+            if (has_post_thumbnail($post_id)) {
+                $featured_image = get_the_post_thumbnail_url($post_id, 'full');
+            }
+
+            // Get categories
+            $categories = wp_get_post_categories($post_id, array('fields' => 'names'));
+            
+            // Get tags
+            $tags = wp_get_post_tags($post_id, array('fields' => 'names'));
+
+            $posts[] = array(
+                'id' => $post_id,
+                'title' => get_the_title(),
+                'slug' => get_post_field('post_name', $post_id),
+                'excerpt' => get_the_excerpt(),
+                'content' => get_the_content(),
+                'status' => get_post_status(),
+                'date' => get_the_date('c'),
+                'modified' => get_the_modified_date('c'),
+                'author' => get_the_author(),
+                'featuredImage' => $featured_image,
+                'categories' => $categories,
+                'tags' => $tags,
+                'sticky' => is_sticky($post_id),
+                'link' => get_permalink($post_id)
+            );
+        }
+        wp_reset_postdata();
+    }
+
+    wp_send_json(array(
+        'success' => true,
+        'data' => $posts,
+        'pagination' => array(
+            'currentPage' => $page,
+            'totalPages' => $query->max_num_pages,
+            'totalPosts' => $query->found_posts,
+            'perPage' => $per_page,
+            'hasNextPage' => $page < $query->max_num_pages,
+            'hasPrevPage' => $page > 1
+        )
+    ));
 }
 
 register_activation_hook(__FILE__, function () {
-    lta_news_sync_update_settings(array());
-});
+    global $wpdb;
+    $table = $wpdb->prefix . LTA_NEWS_SYNC_TABLE;
+    $charset_collate = $wpdb->get_charset_collate();
+    $sql = "CREATE TABLE IF NOT EXISTS {$table} (
+        id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+        setting_key varchar(191) NOT NULL,
+        setting_value longtext NULL,
+        updated_at datetime NOT NULL,
+        PRIMARY KEY  (id),
+        UNIQUE KEY setting_key (setting_key)
+    ) {$charset_collate};";
 
-// Hook WordPress core delete to send webhook
-add_action('before_delete_post', function ($post_id) {
-    if (get_post_type($post_id) !== 'post') return;
-    lta_news_sync_send_webhook('post_deleted', array(
-        'id' => $post_id,
-        'title' => get_the_title($post_id),
-        'slug' => get_post_field('post_name', $post_id),
-        'status' => get_post_status($post_id)
-    ));
+    require_once ABSPATH . 'wp-admin/includes/upgrade.php';
+    dbDelta($sql);
+
+    lta_news_sync_update_settings(array());
 });
 
 

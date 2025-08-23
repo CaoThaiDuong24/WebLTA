@@ -1,226 +1,201 @@
-const fs = require('fs')
-const path = require('path')
-const crypto = require('crypto')
+const fs = require('fs');
+const path = require('path');
+const crypto = require('crypto');
 
-// Encryption key (same as in lib/security.ts)
-const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY || 'lta-encryption-key-2024-stable-32chars'
-
-// Get encryption key
-function getKey() {
-  return crypto.scryptSync(ENCRYPTION_KEY, 'salt', 32)
-}
-
-// Decrypt sensitive data
+// Hàm decrypt (copy từ lib/security.ts)
 function decryptSensitiveData(encryptedData) {
   try {
-    const key = getKey()
-    const dataBuffer = Buffer.from(encryptedData, 'base64')
-    const salt = dataBuffer.slice(0, 8)
-    const encrypted = dataBuffer.slice(8)
-    const keyBuffer = Buffer.from(key)
+    const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY || 'lta-encryption-key-2024-stable-32chars';
     
-    // XOR decryption with key
-    const decrypted = Buffer.alloc(encrypted.length)
+    // Tạo key từ ENCRYPTION_KEY
+    function getKey() {
+      return crypto.scryptSync(ENCRYPTION_KEY, 'salt', 32);
+    }
+    
+    const key = getKey();
+    const combined = Buffer.from(encryptedData, 'base64');
+    
+    // Tách salt và dữ liệu
+    const salt = combined.subarray(0, 8);
+    const encrypted = combined.subarray(8);
+    const keyBuffer = Buffer.from(key);
+    
+    // XOR decryption
+    const decrypted = Buffer.alloc(encrypted.length);
     for (let i = 0; i < encrypted.length; i++) {
-      decrypted[i] = encrypted[i] ^ keyBuffer[i % keyBuffer.length]
+      decrypted[i] = encrypted[i] ^ keyBuffer[i % keyBuffer.length];
     }
     
-    return decrypted.toString('utf8')
+    return decrypted.toString('utf8');
   } catch (error) {
-    console.error('Decryption error:', error)
-    throw new Error('Failed to decrypt data')
+    console.error('Decryption error:', error.message);
+    return '';
   }
 }
 
-// Load and decrypt WordPress config
-function getWordPressConfig() {
-  const configFile = path.join(process.cwd(), 'data', 'wordpress-config.json')
+// Đọc cấu hình
+function getConfigs() {
+  const pluginConfigPath = path.join(process.cwd(), 'data', 'plugin-config.json');
+  const wpConfigPath = path.join(process.cwd(), 'data', 'wordpress-config.json');
   
-  if (fs.existsSync(configFile)) {
-    try {
-      const configData = fs.readFileSync(configFile, 'utf8')
-      const config = JSON.parse(configData)
-      
-      // Decrypt sensitive fields if needed
-      const decryptIfPrefixed = (value) => {
-        if (typeof value === 'string' && value.startsWith('ENCRYPTED:')) {
-          try {
-            return decryptSensitiveData(value.replace('ENCRYPTED:', ''))
-          } catch {
-            return value
-          }
-        }
-        return value
-      }
-      
-      return {
-        ...config,
-        username: decryptIfPrefixed(config.username),
-        applicationPassword: decryptIfPrefixed(config.applicationPassword),
-      }
-    } catch (error) {
-      console.error('Error reading WordPress config file:', error)
-      return null
-    }
-  }
-  return null
-}
-
-// Load and decrypt plugin config
-function getPluginConfig() {
-  const configFile = path.join(process.cwd(), 'data', 'plugin-config.json')
+  let pluginConfig = null;
+  let wpConfig = null;
   
-  if (fs.existsSync(configFile)) {
-    try {
-      const configData = fs.readFileSync(configFile, 'utf8')
-      const config = JSON.parse(configData)
-      
-      // Decrypt API key if needed
-      if (config.apiKey && config.apiKey.startsWith('ENCRYPTED:')) {
-        config.apiKey = decryptSensitiveData(config.apiKey.replace('ENCRYPTED:', ''))
-      }
-      
-      return config
-    } catch (error) {
-      console.error('Error reading plugin config file:', error)
-      return null
-    }
-  }
-  return null
-}
-
-// Test WordPress connection
-async function testWordPressConnection() {
-  console.log('🔍 Testing WordPress connection...')
-  
-  const wordpressConfig = getWordPressConfig()
-  const pluginConfig = getPluginConfig()
-  
-  console.log('📋 WordPress Config:', {
-    siteUrl: wordpressConfig?.siteUrl,
-    username: wordpressConfig?.username ? '***' : 'empty',
-    applicationPassword: wordpressConfig?.applicationPassword ? '***' : 'empty'
-  })
-  
-  console.log('📋 Plugin Config:', {
-    apiKey: pluginConfig?.apiKey ? '***' : 'empty',
-    webhookUrl: pluginConfig?.webhookUrl
-  })
-  
-  if (!wordpressConfig || !wordpressConfig.siteUrl || !wordpressConfig.username || !wordpressConfig.applicationPassword) {
-    console.log('❌ WordPress config incomplete')
-    return false
-  }
-  
-  if (!pluginConfig || !pluginConfig.apiKey) {
-    console.log('❌ Plugin config incomplete')
-    return false
-  }
-  
-  // Test basic WordPress REST API
   try {
-    const credentials = Buffer.from(`${wordpressConfig.username}:${wordpressConfig.applicationPassword}`).toString('base64')
-    const testUrl = `${wordpressConfig.siteUrl}/wp-json/wp/v2/posts?per_page=1`
-    
-    console.log('🔗 Testing REST API:', testUrl)
-    
-    const response = await fetch(testUrl, {
+    if (fs.existsSync(pluginConfigPath)) {
+      pluginConfig = JSON.parse(fs.readFileSync(pluginConfigPath, 'utf8'));
+    }
+  } catch (error) {
+    console.error('Error reading plugin config:', error.message);
+  }
+  
+  try {
+    if (fs.existsSync(wpConfigPath)) {
+      const rawConfig = JSON.parse(fs.readFileSync(wpConfigPath, 'utf8'));
+      wpConfig = {
+        ...rawConfig,
+        username: rawConfig.username.startsWith('ENCRYPTED:') 
+          ? decryptSensitiveData(rawConfig.username.replace('ENCRYPTED:', ''))
+          : rawConfig.username,
+        applicationPassword: rawConfig.applicationPassword.startsWith('ENCRYPTED:')
+          ? decryptSensitiveData(rawConfig.applicationPassword.replace('ENCRYPTED:', ''))
+          : rawConfig.applicationPassword
+      };
+    }
+  } catch (error) {
+    console.error('Error reading WordPress config:', error.message);
+  }
+  
+  return { pluginConfig, wpConfig };
+}
+
+// Test kết nối
+async function testConnection() {
+  console.log('🔍 Testing WordPress connection...\n');
+  
+  const { pluginConfig, wpConfig } = getConfigs();
+  
+  if (!pluginConfig) {
+    console.error('❌ Plugin config not found or invalid');
+    return;
+  }
+  
+  if (!wpConfig) {
+    console.error('❌ WordPress config not found or invalid');
+    return;
+  }
+  
+  console.log('📋 Plugin Config:');
+  console.log(`  - API Key: ${pluginConfig.apiKey ? '✅ Set' : '❌ Missing'}`);
+  console.log(`  - Webhook URL: ${pluginConfig.webhookUrl || '❌ Missing'}`);
+  console.log(`  - Auto Sync: ${pluginConfig.autoSync ? '✅ Enabled' : '❌ Disabled'}`);
+  
+  console.log('\n📋 WordPress Config:');
+  console.log(`  - Site URL: ${wpConfig.siteUrl || '❌ Missing'}`);
+  console.log(`  - Username: ${wpConfig.username ? '✅ Set' : '❌ Missing'}`);
+  console.log(`  - App Password: ${wpConfig.applicationPassword ? '✅ Set' : '❌ Missing'}`);
+  console.log(`  - Is Connected: ${wpConfig.isConnected ? '✅ Yes' : '❌ No'}`);
+  
+  // Test 1: Kiểm tra site URL có accessible không
+  console.log('\n🧪 Test 1: Checking site accessibility...');
+  try {
+    const response = await fetch(wpConfig.siteUrl, {
       method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Basic ${credentials}`
-      }
-    })
-    
-    if (response.ok) {
-      console.log('✅ WordPress REST API connection successful')
-      return true
-    } else {
-      console.log('❌ WordPress REST API connection failed:', response.status, response.statusText)
-      return false
-    }
+      signal: AbortSignal.timeout(10000)
+    });
+    console.log(`  - Status: ${response.status} ${response.statusText}`);
+    console.log(`  - Accessible: ${response.ok ? '✅ Yes' : '❌ No'}`);
   } catch (error) {
-    console.log('❌ WordPress connection error:', error.message)
-    return false
-  }
-}
-
-// Test plugin AJAX endpoint
-async function testPluginEndpoint() {
-  console.log('🔍 Testing plugin AJAX endpoint...')
-  
-  const wordpressConfig = getWordPressConfig()
-  const pluginConfig = getPluginConfig()
-  
-  if (!wordpressConfig?.siteUrl || !pluginConfig?.apiKey) {
-    console.log('❌ Config incomplete for plugin test')
-    return false
+    console.log(`  - Error: ${error.message}`);
+    console.log('  - Accessible: ❌ No');
   }
   
+  // Test 2: Kiểm tra WordPress REST API
+  console.log('\n🧪 Test 2: Checking WordPress REST API...');
   try {
-    const ajaxUrl = `${wordpressConfig.siteUrl.replace(/\/$/, '')}/wp-admin/admin-ajax.php?action=lta_news_create`
-    
-    console.log('🔗 Testing plugin AJAX:', ajaxUrl)
-    
-    const payload = {
-      apiKey: pluginConfig.apiKey,
-      title: 'Test Post',
-      content: 'Test content',
-      excerpt: 'Test excerpt',
-      status: 'draft'
-    }
-    
-    const response = await fetch(ajaxUrl, {
+    const restUrl = `${wpConfig.siteUrl}/wp-json/wp/v2/posts?per_page=1`;
+    const response = await fetch(restUrl, {
+      method: 'GET',
+      signal: AbortSignal.timeout(10000)
+    });
+    console.log(`  - Status: ${response.status} ${response.statusText}`);
+    console.log(`  - REST API: ${response.ok ? '✅ Working' : '❌ Blocked/Error'}`);
+  } catch (error) {
+    console.log(`  - Error: ${error.message}`);
+    console.log('  - REST API: ❌ Error');
+  }
+  
+  // Test 3: Kiểm tra plugin endpoint
+  console.log('\n🧪 Test 3: Checking plugin endpoint...');
+  try {
+    const pluginUrl = `${wpConfig.siteUrl}/wp-admin/admin-ajax.php?action=lta_news_create`;
+    const response = await fetch(pluginUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify(payload)
-    })
+      body: JSON.stringify({
+        apiKey: pluginConfig.apiKey,
+        title: 'Test Post',
+        content: 'Test content',
+        excerpt: 'Test excerpt',
+        status: 'draft'
+      }),
+      signal: AbortSignal.timeout(15000)
+    });
     
-    const text = await response.text()
-    console.log('📄 Plugin response:', text)
+    console.log(`  - Status: ${response.status} ${response.statusText}`);
     
     if (response.ok) {
-      console.log('✅ Plugin endpoint test successful')
-      return true
+      const result = await response.text();
+      console.log(`  - Plugin: ✅ Working`);
+      console.log(`  - Response: ${result.substring(0, 200)}...`);
     } else {
-      console.log('❌ Plugin endpoint test failed:', response.status, response.statusText)
-      return false
+      const errorText = await response.text();
+      console.log(`  - Plugin: ❌ Error`);
+      console.log(`  - Error: ${errorText.substring(0, 200)}...`);
     }
   } catch (error) {
-    console.log('❌ Plugin endpoint error:', error.message)
-    return false
+    console.log(`  - Error: ${error.message}`);
+    console.log('  - Plugin: ❌ Connection failed');
   }
-}
-
-// Main function
-async function main() {
-  console.log('🚀 Starting WordPress connection tests...')
-  console.log('📁 Working directory:', process.cwd())
   
-  const restApiTest = await testWordPressConnection()
-  const pluginTest = await testPluginEndpoint()
-  
-  console.log('\n📊 Test Results:')
-  console.log('REST API:', restApiTest ? '✅ PASS' : '❌ FAIL')
-  console.log('Plugin AJAX:', pluginTest ? '✅ PASS' : '❌ FAIL')
-  
-  if (!restApiTest || !pluginTest) {
-    console.log('\n🔧 Troubleshooting:')
-    console.log('1. Check WordPress site URL is accessible')
-    console.log('2. Verify username and application password are correct')
-    console.log('3. Ensure plugin is installed and activated')
-    console.log('4. Check plugin API key is valid')
+  // Test 4: Kiểm tra authentication
+  console.log('\n🧪 Test 4: Checking authentication...');
+  try {
+    const authUrl = `${wpConfig.siteUrl}/wp-json/wp/v2/users/me`;
+    const credentials = Buffer.from(`${wpConfig.username}:${wpConfig.applicationPassword}`).toString('base64');
+    
+    const response = await fetch(authUrl, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Basic ${credentials}`,
+        'Content-Type': 'application/json'
+      },
+      signal: AbortSignal.timeout(10000)
+    });
+    
+    console.log(`  - Status: ${response.status} ${response.statusText}`);
+    console.log(`  - Auth: ${response.ok ? '✅ Valid' : '❌ Invalid'}`);
+    
+    if (response.ok) {
+      const userData = await response.json();
+      console.log(`  - User: ${userData.name || userData.slug}`);
+    }
+  } catch (error) {
+    console.log(`  - Error: ${error.message}`);
+    console.log('  - Auth: ❌ Failed');
   }
+  
+  console.log('\n📊 Summary:');
+  console.log('If you see ❌ in any test above, that could be the cause of 502 errors.');
+  console.log('Common causes:');
+  console.log('1. WordPress site is down or slow');
+  console.log('2. REST API is blocked by hosting provider');
+  console.log('3. Plugin is not installed or not working');
+  console.log('4. Authentication credentials are wrong');
+  console.log('5. Network timeout issues');
 }
 
-// Run if called directly
-if (require.main === module) {
-  main().catch(console.error)
-}
-
-module.exports = {
-  testWordPressConnection,
-  testPluginEndpoint
-}
+// Chạy test
+testConnection().catch(console.error);

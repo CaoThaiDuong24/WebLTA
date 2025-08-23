@@ -33,10 +33,10 @@ export default function NewsDetailPage() {
         setLoading(true)
         setError(null)
         
-        const response = await fetch(`/api/news/${slug}`)
+        const response = await fetch(`/api/news/${slug}?status=published`)
         const result = await response.json()
         
-        if (result.success && result.data.status === 'published') {
+        if (result.success) {
           setNews(result.data)
         } else {
           setError('Không tìm thấy tin tức')

@@ -123,12 +123,7 @@ export default function EditNewsPage() {
   // Update form when newsData changes
   useEffect(() => {
     if (newsData) {
-      console.log('🔄 Updating form with news data:', newsData)
-      console.log('📝 Loading form data:', {
-        title: newsData.title,
-        excerpt: newsData.excerpt?.substring(0, 50) + '...',
-        content: newsData.content?.substring(0, 100) + '...'
-      })
+
       
       // Set form values - giữ nguyên HTML cho Quill Editor
       setValue('title', newsData.title || '')
@@ -143,12 +138,40 @@ export default function EditNewsPage() {
       setValue('featuredImage', newsData.featuredImage || '')
       setValue('additionalImages', newsData.additionalImages || [])
       
-      // Set image previews
+      // Set image previews - chỉ lấy hình ảnh thực sự
       if (newsData.featuredImage) {
         setFeaturedImagePreview(newsData.featuredImage)
       }
+      
+      // Lọc additionalImages để chỉ lấy hình ảnh bổ sung thực sự (không phải featuredImage), đồng thời loại trùng theo "gốc" ảnh
+      const normalizeForCompareSubmit = (url: string) => {
+        try {
+          const u = new URL(url)
+          let p = u.pathname.toLowerCase()
+          p = p.replace(/\.[a-z0-9]+$/i, '')
+          p = p.replace(/-\d+x\d+$/i, '')
+          p = p.replace(/-scaled$/i, '')
+          return u.origin.toLowerCase() + p
+        } catch {
+          let s = String(url).toLowerCase().split('?')[0]
+          s = s.replace(/\.[a-z0-9]+$/i, '')
+          s = s.replace(/-\d+x\d+$/i, '')
+          s = s.replace(/-scaled$/i, '')
+          return s.replace(/\/$/, '')
+        }
+      }
+      const baseFeatured = newsData.featuredImage ? normalizeForCompareSubmit(newsData.featuredImage) : ''
       if (newsData.additionalImages && newsData.additionalImages.length > 0) {
-        setAdditionalImagesPreview(newsData.additionalImages)
+        const map = new Map<string, string>()
+        for (const raw of newsData.additionalImages) {
+          if (!raw || String(raw).trim() === '') continue
+          const norm = normalizeForCompareSubmit(raw)
+          if (baseFeatured && norm === baseFeatured) continue
+          if (!map.has(norm)) map.set(norm, raw)
+        }
+        const cleaned = Array.from(map.values())
+        setAdditionalImagesPreview(cleaned)
+        setValue('additionalImages', cleaned)
       }
     }
   }, [newsData, setValue])
@@ -161,6 +184,8 @@ export default function EditNewsPage() {
         const result = await response.json()
         const data = result.data // Lấy dữ liệu từ result.data
         setNewsData(data)
+        
+        
         
         // Set form values - giữ nguyên HTML cho Quill Editor
         setValue('title', data.title || '')
@@ -175,22 +200,21 @@ export default function EditNewsPage() {
         setValue('featuredImage', data.featuredImage || '')
         setValue('additionalImages', data.additionalImages || [])
         
-        // Set image previews
+        // Set image previews - chỉ lấy hình ảnh thực sự
         if (data.featuredImage) {
           setFeaturedImagePreview(data.featuredImage)
         }
+        
+        // Lọc additionalImages để chỉ lấy hình ảnh bổ sung thực sự (không phải featuredImage)
         if (data.additionalImages && data.additionalImages.length > 0) {
-          setAdditionalImagesPreview(data.additionalImages)
+          const filteredAdditionalImages = data.additionalImages.filter((img: string) => 
+            img !== data.featuredImage && img !== data.image
+          )
+          setAdditionalImagesPreview(filteredAdditionalImages)
+          setValue('additionalImages', filteredAdditionalImages)
         }
         
-        console.log('✅ News data loaded:', data)
-        console.log('📋 Form values set:', {
-          title: data.title,
-          slug: data.slug,
-          status: data.status,
-          featured: data.featured,
-          category: data.category
-        })
+
       } else {
         throw new Error('Failed to load news data')
       }
@@ -239,7 +263,7 @@ export default function EditNewsPage() {
         setValue('featuredImage', dataUrl)
         setFeaturedImage(file)
         setFeaturedImagePreview(dataUrl)
-        console.log('✅ Featured image processed')
+
       } catch (error) {
         console.error('Error processing featured image:', error)
         toast({
@@ -262,7 +286,7 @@ export default function EditNewsPage() {
         setValue('additionalImages', dataUrls)
         setAdditionalImages(files)
         setAdditionalImagesPreview(dataUrls)
-        console.log('✅ Additional images processed')
+
       } catch (error) {
         console.error('Error processing additional images:', error)
         toast({
@@ -278,28 +302,81 @@ export default function EditNewsPage() {
 
   const onSubmit = async (data: NewsForm) => {
     if (isLoading) {
-      console.log('⚠️ Form đang submit, bỏ qua')
+
       return
     }
     
-    console.log('🚀 Form submitted with data:', data)
+
     setIsLoading(true)
     setSaveStatus('saving')
 
     try {
-      // Prepare image data
+      // Prepare image data - sử dụng dữ liệu từ form state thay vì preview
       let featuredImageUrl = data.featuredImage || ''
       let additionalImageUrls = data.additionalImages || []
       
-      if (featuredImagePreview) {
+      // Chỉ sử dụng preview nếu có thay đổi mới
+      if (featuredImagePreview && featuredImagePreview !== newsData.featuredImage) {
         featuredImageUrl = featuredImagePreview
       }
-      if (additionalImagesPreview.length > 0) {
+      if (additionalImagesPreview.length > 0 && JSON.stringify(additionalImagesPreview) !== JSON.stringify(newsData.additionalImages)) {
         additionalImageUrls = additionalImagesPreview
       }
 
+      // Làm sạch ảnh bổ sung: loại ảnh đại diện và trùng lặp theo "gốc" ảnh
+      const normalizeForCompareSubmit = (url: string) => {
+        try {
+          const u = new URL(url)
+          let p = u.pathname.toLowerCase()
+          p = p.replace(/\.[a-z0-9]+$/i, '')
+          p = p.replace(/-\d+x\d+$/i, '')
+          p = p.replace(/-scaled$/i, '')
+          return u.origin.toLowerCase() + p
+        } catch {
+          let s = String(url).toLowerCase().split('?')[0]
+          s = s.replace(/\.[a-z0-9]+$/i, '')
+          s = s.replace(/-\d+x\d+$/i, '')
+          s = s.replace(/-scaled$/i, '')
+          return s.replace(/\/$/, '')
+        }
+      }
+      const baseFeatured = featuredImageUrl ? normalizeForCompareSubmit(featuredImageUrl) : ''
+      const normalizedToOriginal = new Map<string, string>()
+      for (const raw of additionalImageUrls) {
+        if (!raw || String(raw).trim() === '') continue
+        const norm = normalizeForCompareSubmit(raw)
+        if (baseFeatured && norm === baseFeatured) continue
+        if (!normalizedToOriginal.has(norm)) normalizedToOriginal.set(norm, raw)
+      }
+      additionalImageUrls = Array.from(normalizedToOriginal.values())
+
+      // So sánh thay đổi ảnh để tránh gửi lặp
+      const normalizeForCompare = (url: string) => {
+        try {
+          const u = new URL(url)
+          let p = u.pathname.toLowerCase()
+          p = p.replace(/\.[a-z0-9]+$/i, '')
+          p = p.replace(/-\d+x\d+$/i, '')
+          p = p.replace(/-scaled$/i, '')
+          return u.origin.toLowerCase() + p
+        } catch {
+          let s = String(url || '').toLowerCase().split('?')[0]
+          s = s.replace(/\.[a-z0-9]+$/i, '')
+          s = s.replace(/-\d+x\d+$/i, '')
+          s = s.replace(/-scaled$/i, '')
+          return s.replace(/\/$/, '')
+        }
+      }
+      const arraysEqualNormalized = (a: string[] = [], b: string[] = []) => {
+        const na = Array.from(new Set(a.map(normalizeForCompare))).sort()
+        const nb = Array.from(new Set(b.map(normalizeForCompare))).sort()
+        return JSON.stringify(na) === JSON.stringify(nb)
+      }
+      const hasAdditionalChanged = !arraysEqualNormalized(additionalImageUrls, newsData?.additionalImages || [])
+      const hasFeaturedChanged = normalizeForCompare(featuredImageUrl) !== normalizeForCompare(newsData?.featuredImage || '')
+
       // Update news data - giữ nguyên ID gốc
-      const updateData = {
+      const updateData: any = {
         id: newsId, // Giữ nguyên ID gốc
         title: data.title || 'Tin tức mới',
         slug: data.slug || generateSlug(data.title || 'tin-tuc-moi'),
@@ -310,8 +387,11 @@ export default function EditNewsPage() {
         category: data.category || '',
         metaTitle: data.metaTitle || data.title || '',
         metaDescription: data.metaDescription || '',
-        featuredImage: featuredImageUrl,
-        additionalImages: additionalImageUrls,
+        // Chèn có điều kiện để tránh plugin thêm trùng
+        featuredImage: hasFeaturedChanged ? featuredImageUrl : undefined,
+        additionalImages: hasAdditionalChanged ? additionalImageUrls : undefined,
+        __skipFeaturedImage: !hasFeaturedChanged,
+        __skipAdditionalImages: !hasAdditionalChanged,
         image: featuredImageUrl,
         updatedAt: new Date().toISOString(),
         // Giữ nguyên các trường quan trọng khác

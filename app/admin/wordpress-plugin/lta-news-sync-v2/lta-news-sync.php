@@ -1,6 +1,6 @@
 <?php
 /**
- * Plugin Name: LTA News Sync
+ * Plugin Name: LTA News Sync V2
  * Description: Tạo bài viết WordPress từ hệ thống LTA thông qua AJAX với API Key.
  * Version: 1.3.2
  * Author: LTA Team

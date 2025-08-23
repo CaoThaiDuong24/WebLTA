@@ -28,7 +28,7 @@ import { useToast } from '@/hooks/use-toast'
 import { stripHtmlTags } from '@/lib/utils'
 import { ImageUrlDisplay, formatImageUrl } from '@/components/ui/image-url-display'
 import { SimpleHtmlContent } from '@/components/ui/simple-html-content'
-import { HtmlContentDebug } from '@/components/admin/html-content-debug'
+
 
 interface NewsItem {
   id: string
@@ -95,14 +95,14 @@ export default function NewsDetailPage() {
   const loadNewsDetail = async () => {
     try {
       setLoading(true)
-      console.log('📋 Loading news detail for ID:', newsId)
+      
       
       const response = await fetch(`/api/news/${newsId}`)
-      console.log('📥 Response status:', response.status)
+      
       
       if (response.ok) {
         const result = await response.json()
-        console.log('✅ News detail loaded:', result)
+        
         setNews(result.data)
       } else {
         console.error('❌ Failed to load news detail')
@@ -135,13 +135,13 @@ export default function NewsDetailPage() {
 
     try {
       setDeleting(true)
-      console.log('🗑️ Deleting news:', news.id)
+      
 
       const response = await fetch(`/api/news/${news.id}`, {
         method: 'DELETE',
       })
 
-      console.log('📥 Delete response status:', response.status)
+      
 
       if (response.ok) {
         toast({
@@ -176,7 +176,7 @@ export default function NewsDetailPage() {
   const handleSyncFromWordPress = async () => {
     try {
       setRestoring(true)
-      console.log('🔄 Syncing news from WordPress:', news?.wordpressId || 'all missing')
+      
 
       const response = await fetch('/api/wordpress/sync-missing', {
         method: 'POST',
@@ -368,19 +368,21 @@ export default function NewsDetailPage() {
             </Card>
           )}
 
-          {/* Images Card */}
-          {news.additionalImages && news.additionalImages.length > 0 && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center space-x-2">
-                  <FileText className="h-5 w-5" />
-                  <span>Hình ảnh bổ sung ({news.additionalImages.length})</span>
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                  {/* Hiển thị additionalImages */}
-                  {news.additionalImages?.map((imageUrl, index) => (
+                     {/* Images Card */}
+           {news.additionalImages && news.additionalImages.filter((imageUrl) => imageUrl !== news.featuredImage && imageUrl !== news.image).length > 0 && (
+             <Card>
+               <CardHeader>
+                 <CardTitle className="flex items-center space-x-2">
+                   <FileText className="h-5 w-5" />
+                   <span>Hình ảnh bổ sung ({news.additionalImages?.filter((imageUrl) => imageUrl !== news.featuredImage && imageUrl !== news.image)?.length || 0})</span>
+                 </CardTitle>
+               </CardHeader>
+               <CardContent>
+                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                   {/* Hiển thị additionalImages - lọc trùng lặp với featuredImage */}
+                   {news.additionalImages
+                     ?.filter((imageUrl) => imageUrl !== news.featuredImage && imageUrl !== news.image)
+                     ?.map((imageUrl, index) => (
                     <div key={index} className="border rounded-lg p-3 hover:bg-gray-50 transition-colors duration-200">
                       <div className="flex items-start space-x-3">
                         <div 
@@ -455,12 +457,7 @@ export default function NewsDetailPage() {
             </CardContent>
           </Card>
 
-          {/* HTML Content Debug */}
-          <HtmlContentDebug 
-            content={news.content}
-            title="Debug: Nội dung chính"
-            showRawContent={true}
-          />
+
         </div>
 
         {/* Sidebar */}

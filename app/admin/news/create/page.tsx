@@ -88,6 +88,29 @@ export default function CreateNewsPage() {
     'Tin tức ngành'
   ]
 
+  // Function tạo slug từ title
+  const generateSlug = (title: string): string => {
+    if (!title) return ''
+    const withoutDiacritics = title
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/đ/g, 'd')
+      .replace(/Đ/g, 'D')
+    return withoutDiacritics
+      .toLowerCase()
+      .trim()
+      .replace(/[^a-z0-9\s-]/g, '')
+      .replace(/[\s_-]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+  }
+
+  // Function tạo slug duy nhất với timestamp
+  const generateUniqueSlug = (title: string): string => {
+    const baseSlug = generateSlug(title)
+    const timestamp = Date.now().toString(36)
+    return `${baseSlug}-${timestamp}`
+  }
+
   const {
     register,
     handleSubmit,
@@ -146,20 +169,7 @@ export default function CreateNewsPage() {
     loadUploadConfig()
   }, [])
 
-  const generateSlug = (title: string) => {
-    if (!title) return ''
-    const withoutDiacritics = title
-      .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '')
-      .replace(/đ/g, 'd')
-      .replace(/Đ/g, 'D')
-    return withoutDiacritics
-      .toLowerCase()
-      .trim()
-      .replace(/[^a-z0-9\s-]/g, '')
-      .replace(/[\s_-]+/g, '-')
-      .replace(/^-+|-+$/g, '')
-  }
+
 
   const handleTitleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const title = e.target.value
@@ -304,8 +314,8 @@ export default function CreateNewsPage() {
         additionalImageUrls = additionalImagesPreview
       }
 
-      // Step 2: Save to local database
-      console.log('💾 Saving to local database...')
+      // Step 2: Gửi trực tiếp lên WordPress qua API nội bộ (plugin)
+      console.log('🌐 Publishing to WordPress via plugin...')
       console.log('📊 Prepared data:', {
         title: data.title,
         slug: data.slug,
@@ -328,7 +338,7 @@ export default function CreateNewsPage() {
         featuredImage: featuredImageUrl,
         additionalImages: additionalImageUrls,
         image: featuredImageUrl,
-        relatedImages: [], // Không tạo relatedImages tự động để tránh trùng lặp
+        relatedImages: [],
         author: (session?.user?.name as string) || (session?.user?.email as string) || 'Admin'
       }
       
@@ -341,12 +351,37 @@ export default function CreateNewsPage() {
         body: JSON.stringify(localNewsData),
       })
 
+      let localResult: any = null
+      let errorMessage = ''
+      
       if (!localResponse.ok) {
         const localError = await localResponse.text()
-        throw new Error(`Lỗi khi lưu tin tức: ${localError}`)
+        errorMessage = localError
+        
+        // Cố gắng parse JSON để lấy thông báo lỗi chi tiết
+        try {
+          const errorJson = JSON.parse(localError)
+          if (errorJson.error) {
+            errorMessage = errorJson.error
+          }
+          localResult = errorJson
+        } catch (e) {
+          // Nếu không parse được JSON, sử dụng text gốc
+          localResult = { error: localError }
+        }
+        
+        // Không kiểm tra trùng tiêu đề ở frontend nữa – để backend/WordPress xử lý
+        
+        throw new Error(`Lỗi khi lưu tin tức: ${errorMessage}`)
+      } else {
+        // Nếu response ok, parse JSON
+        try {
+          localResult = await localResponse.json()
+        } catch (e) {
+          console.error('❌ Invalid JSON response:', e)
+          throw new Error('Plugin trả về dữ liệu không hợp lệ')
+        }
       }
-
-      const localResult = await localResponse.json()
       console.log('📋 Save result:', localResult)
       
       if (localResponse.ok && localResult.success) {
@@ -361,8 +396,8 @@ export default function CreateNewsPage() {
         setWordpressStatus('error')
         
         // Hiển thị cảnh báo chi tiết
-        const errorMessage = localResult.error || 'Lỗi không xác định'
-        const warningMessage = localResult.warning || 'Không thể lưu tin tức'
+        const errorMessage = localResult?.error || 'Lỗi không xác định'
+        const warningMessage = localResult?.warning || 'Không thể lưu tin tức'
         
         toast({
           title: "❌ Không thể lưu tin tức",
@@ -371,9 +406,12 @@ export default function CreateNewsPage() {
         })
         
         // Hiển thị thông tin chi tiết trong console
-        if (localResult.details) {
+        if (localResult?.details) {
           console.error('🔍 Chi tiết lỗi:', localResult.details)
         }
+        
+        // Log toàn bộ response để debug
+        console.error('🔍 Full response:', localResult)
       }
       
       // Redirect sau khi hoàn thành
@@ -480,11 +518,38 @@ export default function CreateNewsPage() {
 
                 <div>
                   <Label htmlFor="slug">Slug *</Label>
-                  <Input
-                    id="slug"
-                    {...register('slug')}
-                    placeholder="tin-tuc-moi"
-                  />
+                  <div className="flex gap-2">
+                    <Input
+                      id="slug"
+                      {...register('slug')}
+                      placeholder="tin-tuc-moi"
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        const currentTitle = watch('title')
+                        if (currentTitle) {
+                          const uniqueSlug = generateUniqueSlug(currentTitle)
+                          setValue('slug', uniqueSlug)
+                          toast({
+                            title: "✅ Đã tạo slug duy nhất",
+                            description: `Slug mới: ${uniqueSlug}`,
+                          })
+                        } else {
+                          toast({
+                            title: "⚠️ Vui lòng nhập tiêu đề trước",
+                            description: "Cần có tiêu đề để tạo slug",
+                            variant: "destructive",
+                          })
+                        }
+                      }}
+                    >
+                      <Copy className="h-4 w-4 mr-1" />
+                      Tạo slug duy nhất
+                    </Button>
+                  </div>
                   {errors.slug && (
                     <p className="text-sm text-red-600 mt-1">{errors.slug.message}</p>
                   )}

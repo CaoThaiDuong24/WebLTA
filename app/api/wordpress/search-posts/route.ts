@@ -10,6 +10,16 @@ export async function GET(request: NextRequest) {
     const perPage = parseInt(searchParams.get('per_page') || '10')
     const page = parseInt(searchParams.get('page') || '1')
     const status = searchParams.get('status') || 'publish,draft'
+    
+    // Xử lý status parameter
+    let wpStatus = 'publish,draft'
+    if (status === 'published') {
+      wpStatus = 'publish'
+    } else if (status === 'draft') {
+      wpStatus = 'draft'
+    } else if (status === 'all') {
+      wpStatus = 'publish,draft'
+    }
 
     // Kiểm tra cấu hình WordPress
     const config = getWordPressConfig()
@@ -29,7 +39,7 @@ export async function GET(request: NextRequest) {
     if (query) searchParamsObj.append('search', query)
     searchParamsObj.append('per_page', perPage.toString())
     searchParamsObj.append('page', page.toString())
-    searchParamsObj.append('status', status)
+    searchParamsObj.append('status', wpStatus)
     searchParamsObj.append('_embed', '1') // Lấy thêm thông tin media
 
     // Gọi WordPress REST API
@@ -52,9 +62,24 @@ export async function GET(request: NextRequest) {
 
       const posts = await response.json()
 
-      // Transform posts to our format
+      // Transform posts to our format với debug
       const transformedPosts = posts.map((post: any) => {
-        const featuredImage = post._embedded?.['wp:featuredmedia']?.[0]?.source_url || ''
+        // Debug: Log để kiểm tra featured image
+        console.log(`🔍 Post ${post.id} featured image debug:`, {
+          featuredMediaId: post.featured_media,
+          embedded: post._embedded ? Object.keys(post._embedded) : 'No embedded data',
+          featuredMedia: post._embedded?.['wp:featuredmedia']?.[0] || 'No featured media'
+        })
+        
+        // Lấy featured image từ nhiều nguồn khác nhau
+        let featuredImage = ''
+        if (post._embedded?.['wp:featuredmedia']?.[0]?.source_url) {
+          featuredImage = post._embedded['wp:featuredmedia'][0].source_url
+        } else if (post._embedded?.['wp:featuredmedia']?.[0]?.guid?.rendered) {
+          featuredImage = post._embedded['wp:featuredmedia'][0].guid.rendered
+        } else if (post._embedded?.['wp:featuredmedia']?.[0]?.media_details?.sizes?.thumbnail?.source_url) {
+          featuredImage = post._embedded['wp:featuredmedia'][0].media_details.sizes.thumbnail.source_url
+        }
         
         // Xử lý thông tin tác giả
         let author = 'Admin LTA'

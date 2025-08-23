@@ -6,15 +6,33 @@ import path from 'path'
 
 const PLUGIN_CONFIG_FILE_PATH = path.join(process.cwd(), 'data', 'plugin-config.json')
 
+// Cache decrypted API key để tăng tốc
+let cachedApiKey: string | null = null
+let cacheTimestamp = 0
+const CACHE_DURATION = 5 * 60 * 1000 // 5 phút
+
 const getPluginConfig = () => {
   try {
+    const now = Date.now()
+    
+    // Return cached API key nếu còn hạn
+    if (cachedApiKey && (now - cacheTimestamp) < CACHE_DURATION) {
+      return { apiKey: cachedApiKey }
+    }
+    
     if (fs.existsSync(PLUGIN_CONFIG_FILE_PATH)) {
       const configData = fs.readFileSync(PLUGIN_CONFIG_FILE_PATH, 'utf8')
       const config = JSON.parse(configData)
       
-      // Decrypt API key if needed
+      // Decrypt API key if needed và cache
       if (config.apiKey && config.apiKey.startsWith('ENCRYPTED:')) {
-        config.apiKey = decryptSensitiveData(config.apiKey.replace('ENCRYPTED:', ''))
+        cachedApiKey = decryptSensitiveData(config.apiKey.replace('ENCRYPTED:', ''))
+        cacheTimestamp = now
+        return { apiKey: cachedApiKey }
+      } else if (config.apiKey) {
+        cachedApiKey = config.apiKey
+        cacheTimestamp = now
+        return { apiKey: cachedApiKey }
       }
       
       return config
@@ -43,7 +61,7 @@ export async function POST(request: NextRequest) {
 
     if (!pluginConfig || !pluginConfig.apiKey) {
       return NextResponse.json(
-        { error: 'Plugin chưa được cấu hình API key' },
+        { error: 'Plugin chưa được cấu hình API key. Vui lòng cập nhật API key trong WordPress Admin → LTA News Sync' },
         { status: 400 }
       )
     }
@@ -78,13 +96,23 @@ export async function POST(request: NextRequest) {
       authorUsername
     }
 
-    // Retry logic với timeout tăng lên
+    // Debug: Log thông tin request
+    console.log('🔍 Debug info:', {
+      ajaxUrl,
+      siteUrl,
+      apiKeyLength: apiKey?.length || 0,
+      payloadKeys: Object.keys(payload),
+      titleLength: postData.title?.length || 0,
+      contentLength: postData.content?.length || 0
+    })
+
+    // Tối ưu: Tăng timeout và chỉ retry 1 lần để tránh duplicate
     let response: Response
     let lastError: any = null
     
-    for (let attempt = 1; attempt <= 3; attempt++) {
+    for (let attempt = 1; attempt <= 1; attempt++) {
       try {
-        console.log(`🔄 Attempt ${attempt}/3: Publishing to WordPress...`)
+        console.log(`🚀 Publishing to WordPress (attempt ${attempt}/1)...`)
         
         response = await fetch(ajaxUrl, {
           method: 'POST',
@@ -92,21 +120,20 @@ export async function POST(request: NextRequest) {
             'Content-Type': 'application/json'
           },
           body: JSON.stringify(payload),
-          // Tăng timeout lên 30 giây
-          signal: AbortSignal.timeout(30000)
+          // Tăng timeout lên 60 giây để tránh timeout
+          signal: AbortSignal.timeout(60000)
         })
         
-        // Nếu thành công, thoát khỏi loop
-        break
+        console.log(`✅ Response status: ${response.status}`)
+        
+        // Nếu thành công, thoát khỏi loop ngay
+        if (response.ok) {
+          break
+        }
         
       } catch (error) {
         lastError = error
         console.log(`❌ Attempt ${attempt} failed:`, error.message)
-        
-        if (attempt < 3) {
-          // Chờ 2 giây trước khi thử lại
-          await new Promise(resolve => setTimeout(resolve, 2000))
-        }
       }
     }
     
@@ -114,7 +141,7 @@ export async function POST(request: NextRequest) {
     if (!response) {
       return NextResponse.json(
         { 
-          error: 'Không thể kết nối đến WordPress plugin sau 3 lần thử',
+          error: 'Không thể kết nối đến WordPress plugin',
           details: lastError?.message || 'Unknown error'
         },
         { status: 502 }
@@ -135,6 +162,30 @@ export async function POST(request: NextRequest) {
 
     if (!response.ok || !json?.success) {
       console.error('❌ Plugin publish failed:', json)
+      
+      if (response.status === 401) {
+        return NextResponse.json(
+          { 
+            error: 'API key không đúng. Vui lòng cập nhật API key trong WordPress Admin → LTA News Sync',
+            details: json 
+          },
+          { status: 401 }
+        )
+      }
+      
+      // Xử lý lỗi trùng lặp title
+      if (json?.error && json.error.includes('title already exists')) {
+        return NextResponse.json(
+          { 
+            error: 'Tiêu đề đã tồn tại trong WordPress',
+            details: json,
+            suggestion: 'Vui lòng thay đổi tiêu đề hoặc slug và thử lại.',
+            code: 'DUPLICATE_TITLE'
+          },
+          { status: 409 }
+        )
+      }
+      
       return NextResponse.json(
         { error: json?.error || 'Không thể đăng bài qua plugin', details: json },
         { status: 502 }

@@ -33,74 +33,11 @@ function decryptIfEncrypted(data: string): string {
   return data
 }
 
-function getUsersFromFile(): UserData[] {
-  try {
-    const usersFile = path.join(process.cwd(), 'data', 'users.json')
-    if (fs.existsSync(usersFile)) {
-      const data = fs.readFileSync(usersFile, 'utf8')
-      const users = JSON.parse(data)
-      
-      // Kiểm tra xem dữ liệu có được mã hóa không
-      if (users.length > 0 && users[0].security_version === "2.0") {
-        // Giải mã dữ liệu cho mỗi user
-        return users.map((user: any) => ({
-          ...user,
-          user_login: decryptIfEncrypted(user.user_login),
-          user_email: decryptIfEncrypted(user.user_email),
-          user_pass: decryptIfEncrypted(user.user_pass),
-          display_name: decryptIfEncrypted(user.display_name)
-        }))
-      } else {
-        // Dữ liệu chưa mã hóa
-        return users
-      }
-    }
-  } catch (error) {
-    console.error('Error reading users file:', error)
-  }
-  return []
-}
+// Loại bỏ đọc users từ file local (không còn sử dụng)
+function getUsersFromFile(): UserData[] { return [] }
 
-function saveUsersToFile(users: UserData[]) {
-  try {
-    const usersFile = path.join(process.cwd(), 'data', 'users.json')
-    const usersDir = path.dirname(usersFile)
-    
-    if (!fs.existsSync(usersDir)) {
-      fs.mkdirSync(usersDir, { recursive: true })
-    }
-    
-    // Kiểm tra xem có cần mã hóa không
-    const shouldEncrypt = process.env.ENCRYPTION_ENABLED === 'true'
-    
-    if (shouldEncrypt) {
-      // Mã hóa dữ liệu trước khi lưu
-      const encryptedUsers = users.map(user => ({
-        ...user,
-        user_login: `ENCRYPTED:${encryptSensitiveData(user.user_login)}`,
-        user_email: `ENCRYPTED:${encryptSensitiveData(user.user_email)}`,
-        user_pass: `ENCRYPTED:${encryptSensitiveData(user.user_pass)}`,
-        display_name: `ENCRYPTED:${encryptSensitiveData(user.display_name)}`,
-        security_version: "2.0"
-      }))
-      
-      fs.writeFileSync(usersFile, JSON.stringify(encryptedUsers, null, 2))
-    } else {
-      // Lưu dữ liệu chưa mã hóa
-      const plainUsers = users.map(user => ({
-        ...user,
-        security_version: "1.0"
-      }))
-      
-      fs.writeFileSync(usersFile, JSON.stringify(plainUsers, null, 2))
-    }
-    
-    return true
-  } catch (error) {
-    console.error('Error saving users file:', error)
-    return false
-  }
-}
+// Không còn lưu users ra file local
+function saveUsersToFile(_users: UserData[]) { return false }
 
 export async function GET(request: NextRequest) {
   try {
@@ -174,8 +111,7 @@ export async function GET(request: NextRequest) {
       }
     } catch (wpError: any) {
       console.log('🔗 WordPress plugin fetch failed:', wpError.message)
-      
-      // Fallback: Try to get users from WordPress database
+      // Fallback: Try to get users from WordPress database (vẫn cho phép)
       try {
         const pool = getWpDbPool()
         const prefix = getWpTablePrefix()
@@ -227,52 +163,8 @@ export async function GET(request: NextRequest) {
         
       } catch (dbError: any) {
         console.log('🔗 WordPress database fetch failed:', dbError.message)
-        
-        // Final fallback: Get users from local file
-        try {
-          const usersFile = path.join(process.cwd(), 'data', 'users.json')
-          
-          if (fs.existsSync(usersFile)) {
-            const usersData = fs.readFileSync(usersFile, 'utf8')
-            const users = JSON.parse(usersData)
-            
-            // Decrypt sensitive data for display
-            const decryptedUsers = users.map((user: any) => {
-              const decryptedUser = { ...user }
-              
-              // Decrypt email if encrypted
-              if (user.user_email && user.user_email.startsWith('ENCRYPTED:')) {
-                try {
-                  decryptedUser.user_email = decryptSensitiveData(user.user_email.replace('ENCRYPTED:', ''))
-                } catch (e) {
-                  decryptedUser.user_email = '***@***.***'
-                }
-              }
-              
-              // Don't return password in any form
-              delete decryptedUser.user_pass
-              
-              return decryptedUser
-            })
-            
-            return NextResponse.json({
-              success: true,
-              users: decryptedUsers,
-              count: decryptedUsers.length,
-              source: 'local-file'
-            })
-          } else {
-            return NextResponse.json({
-              success: true,
-              users: [],
-              count: 0,
-              source: 'no-data'
-            })
-          }
-        } catch (fileError: any) {
-          console.log('🔗 Local file fetch failed:', fileError.message)
-          throw new Error('All user fetch methods failed')
-        }
+        // Không còn fallback file local: trả lỗi
+        throw new Error('All user fetch methods failed')
       }
     }
     
@@ -340,54 +232,8 @@ export async function POST(request: NextRequest) {
       console.log('❌ WordPress plugin creation failed:', error.message)
     }
     
-    // Fallback: Create user in local file
-    try {
-      const usersFile = path.join(process.cwd(), 'data', 'users.json')
-      let users = []
-      
-      if (fs.existsSync(usersFile)) {
-        const usersData = fs.readFileSync(usersFile, 'utf8')
-        users = JSON.parse(usersData)
-      }
-      
-      // Check for duplicates
-      if (users.some((u: any) => u.user_login === username)) {
-        return NextResponse.json({ error: 'Username already exists' }, { status: 409 })
-      }
-      if (users.some((u: any) => u.user_email === email)) {
-        return NextResponse.json({ error: 'Email already exists' }, { status: 409 })
-      }
-      
-      const newUser = {
-        id: Date.now(),
-        user_login: username,
-        user_email: email,
-        display_name: name || username,
-        role: role || 'subscriber',
-        created_at: new Date().toISOString(),
-        is_active: true
-      }
-      
-      users.push(newUser)
-      
-      const dataDir = path.dirname(usersFile)
-      if (!fs.existsSync(dataDir)) {
-        fs.mkdirSync(dataDir, { recursive: true })
-      }
-      
-      fs.writeFileSync(usersFile, JSON.stringify(users, null, 2))
-      
-      console.log('✅ User created in local file')
-      return NextResponse.json({
-        success: true,
-        message: 'User created successfully in local file',
-        userId: newUser.id
-      })
-      
-    } catch (error: any) {
-      console.error('❌ Local file creation failed:', error)
-      throw new Error('Failed to create user')
-    }
+    // Không cho phép tạo user local nữa
+    return NextResponse.json({ error: 'WordPress plugin unavailable. User creation is disabled.' }, { status: 503 })
     
   } catch (error: any) {
     console.error('❌ Error creating user:', error)

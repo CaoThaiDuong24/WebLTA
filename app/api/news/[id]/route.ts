@@ -14,29 +14,9 @@ function ensureDataDir() {
   } catch {}
 }
 const WORDPRESS_CONFIG_FILE_PATH = path.join(process.cwd(), 'data', 'wordpress-config.json')
-// Helpers to read/write local news file
-function loadNews(): any[] {
-  try {
-    ensureDataDir()
-    if (!fs.existsSync(NEWS_FILE_PATH)) {
-      fs.writeFileSync(NEWS_FILE_PATH, '[]')
-      return []
-    }
-    const data = fs.readFileSync(NEWS_FILE_PATH, 'utf8')
-    return JSON.parse(data)
-  } catch {
-    return []
-  }
-}
-
-function saveNews(list: any[]) {
-  try {
-    ensureDataDir()
-    fs.writeFileSync(NEWS_FILE_PATH, JSON.stringify(list, null, 2))
-  } catch (e) {
-    console.error('❌ Error saving news file:', e)
-  }
-}
+// Không còn dùng local load/save nữa
+function loadNews(): any[] { return [] }
+function saveNews(_list: any[]) {}
 
 
 const loadLocalNewsById = (id: string) => {
@@ -172,8 +152,8 @@ async function fetchAttachments(baseUrl: string, postId: number, credentials?: s
       ? items.map((m: any) => m?.source_url).filter((u: any) => typeof u === 'string' && u.trim() !== '')
       : []
     
-    // Lọc bỏ svg/icon/emoji
-    return Array.from(new Set(urls.filter((u: string) => {
+    // Lọc bỏ svg/icon/emoji và đảm bảo không trùng lặp
+    const filtered = Array.from(new Set(urls.filter((u: string) => {
       const lower = u.toLowerCase()
       return !(
         lower.endsWith('.svg') ||
@@ -183,7 +163,19 @@ async function fetchAttachments(baseUrl: string, postId: number, credentials?: s
         lower.startsWith('data:image/svg')
       )
     })))
-  } catch {
+
+    console.log('🔍 DEBUG fetchAttachments:', {
+      postId,
+      totalItems: items.length,
+      urlsCount: urls.length,
+      filteredCount: filtered.length,
+      urls: urls,
+      filtered: filtered
+    })
+
+    return filtered
+  } catch (error) {
+    console.error('❌ Error fetching attachments:', error)
     return []
   }
 }
@@ -191,17 +183,15 @@ async function fetchAttachments(baseUrl: string, postId: number, credentials?: s
 export async function GET(request: NextRequest, context: { params: { id: string } }) {
   try {
     const { id } = context.params
-    console.log('🔍 Getting news detail for ID:', id)
+    const { searchParams } = new URL(request.url)
+    const status = searchParams.get('status') || 'all' // Thêm parameter status
+    
+    console.log('🔍 Getting news detail for ID:', id, 'Status filter:', status)
     
     const wpConfig = getWordPressConfig()
 
     if (!wpConfig || !wpConfig.siteUrl || !wpConfig.username || !wpConfig.applicationPassword) {
-      // Fallback to local if no WordPress config
-      const local = loadLocalNewsById(context.params.id)
-      if (local) {
-        return NextResponse.json({ success: true, data: local })
-      }
-      return NextResponse.json({ error: 'Không tìm thấy tin tức' }, { status: 404 })
+      return NextResponse.json({ error: 'WordPress chưa được cấu hình' }, { status: 400 })
     }
 
     const baseUrl: string = String(wpConfig.siteUrl).replace(/\/$/, '')
@@ -251,7 +241,14 @@ export async function GET(request: NextRequest, context: { params: { id: string 
         return NextResponse.json({ error: 'Không tìm thấy tin tức' }, { status: 404 })
       }
 
-      console.log(`✅ Found WordPress post: ${post.title?.rendered || 'Untitled'}`)
+      // Kiểm tra status filter
+      if (status === 'published' && post.status !== 'publish') {
+        return NextResponse.json({ error: 'Tin tức chưa được xuất bản' }, { status: 404 })
+      } else if (status === 'draft' && post.status !== 'draft') {
+        return NextResponse.json({ error: 'Tin tức không phải bản nháp' }, { status: 404 })
+      }
+
+      console.log(`✅ Found WordPress post: ${post.title?.rendered || 'Untitled'} (Status: ${post.status})`)
 
       // Transform WordPress post to our format
       const featuredImage = post._embedded?.['wp:featuredmedia']?.[0]?.source_url || ''
@@ -260,7 +257,48 @@ export async function GET(request: NextRequest, context: { params: { id: string 
       
       // Chỉ lấy attachments, không lấy hình ảnh từ content
       const attachments = await fetchAttachments(baseUrl, post.id, credentials)
-      const additionalImages = attachments.filter(img => img !== featuredImage)
+      
+      // Lọc bỏ featured image khỏi additional images (so sánh theo "gốc" ảnh)
+      const normalizeForCompare = (url: string) => {
+        try {
+          const u = new URL(url)
+          // Bỏ querystring, trailing slash, extension, hậu tố -WxH và -scaled
+          let p = u.pathname.toLowerCase()
+          p = p.replace(/\.[a-z0-9]+$/i, '')
+          p = p.replace(/-\d+x\d+$/i, '')
+          p = p.replace(/-scaled$/i, '')
+          return u.origin.toLowerCase() + p
+        } catch {
+          let s = url.toLowerCase().split('?')[0]
+          s = s.replace(/\.[a-z0-9]+$/i, '')
+          s = s.replace(/-\d+x\d+$/i, '')
+          s = s.replace(/-scaled$/i, '')
+          return s.replace(/\/$/, '')
+        }
+      }
+
+      const baseFeatured = featuredImage ? normalizeForCompare(featuredImage) : ''
+
+      // Deduplicate theo "gốc" ảnh, đồng thời loại bỏ ảnh trùng với featured
+      const normalizedToOriginal = new Map<string, string>()
+      for (const raw of attachments) {
+        if (!raw || raw.trim() === '') continue
+        const norm = normalizeForCompare(raw)
+        if (baseFeatured && norm === baseFeatured) continue
+        if (!normalizedToOriginal.has(norm)) normalizedToOriginal.set(norm, raw)
+      }
+      const additionalImages = Array.from(normalizedToOriginal.values())
+
+      // Debug log để kiểm tra
+      console.log('🔍 DEBUG Images:', {
+        featuredImage,
+        attachmentsCount: attachments.length,
+        additionalImagesCount: additionalImages.length,
+        attachments: attachments,
+        additionalImages: additionalImages,
+        hasFeaturedInAdditional: additionalImages.includes(featuredImage),
+        featuredImageNormalized: featuredImage ? featuredImage.replace(/\/$/, '').toLowerCase() : null
+      })
 
       const newsItem = {
         id: `wp_${post.id}`,
@@ -320,102 +358,25 @@ export async function PUT(
     const { id } = await params
     const body = await request.json()
     
-    const news = loadNews()
-    const newsIndex = news.findIndex(item => item.id === id)
-    
-    let updatedNews: any
-    if (newsIndex === -1) {
-      // Không có trong local: thử lấy từ WP để tạo bản local rồi cập nhật
-      const wpFallback = loadLocalNewsById(id)
-      const base = wpFallback || { id, createdAt: new Date().toISOString() }
-      updatedNews = {
-        ...base,
-        ...body,
-        id: base.id || id,
-        updatedAt: new Date().toISOString()
-      }
-      news.push(updatedNews)
-    } else {
-      // Cập nhật tin tức - giữ nguyên ID và các trường quan trọng
-      updatedNews = {
-        ...news[newsIndex],
-        ...body,
-        id: news[newsIndex].id,
-        wordpressId: news[newsIndex].wordpressId,
-        syncedToWordPress: news[newsIndex].syncedToWordPress,
-        createdAt: news[newsIndex].createdAt,
-        updatedAt: new Date().toISOString()
-      }
-      news[newsIndex] = updatedNews
-    }
-
-    // Lưu vào file
-    saveNews(news)
-
-    // Tự động đồng bộ lên WordPress nếu có cấu hình và tin tức đã được sync trước đó
-    try {
-      const wordpressConfig = getWordPressConfig()
-      if (wordpressConfig && wordpressConfig.siteUrl && updatedNews.wordpressId) {
-        console.log('🔄 Auto-syncing updated news to WordPress...')
-        
-        // Chuẩn bị dữ liệu để sync
-        const syncData = {
-          id: updatedNews.wordpressId, // ID của bài viết trên WordPress
-          title: updatedNews.title,
-          content: updatedNews.content,
-          excerpt: updatedNews.excerpt,
-          status: updatedNews.status === 'published' ? 'publish' : 'draft',
-          categories: updatedNews.category ? [updatedNews.category] : [],
-          tags: updatedNews.tags ? updatedNews.tags.split(',').map((tag: string) => tag.trim()) : [],
-          meta: {
-            meta_title: updatedNews.metaTitle,
-            meta_description: updatedNews.metaDescription
-          }
-        }
-
-        // Sử dụng multi-method sync để cập nhật bài viết
-        const syncResponse = await fetch(`${request.nextUrl.origin}/api/wordpress/sync-multi-method`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(syncData)
-        })
-
-        if (syncResponse.ok) {
-          const syncResult = await syncResponse.json()
-          if (syncResult.success) {
-            // Cập nhật trạng thái sync
-            updatedNews.lastSyncDate = new Date().toISOString()
-            
-            // Lưu lại với thông tin sync
-            const currentNews = loadNews()
-            const currentNewsIndex = currentNews.findIndex(item => item.id === id)
-            if (currentNewsIndex !== -1) {
-              currentNews[currentNewsIndex] = updatedNews
-              saveNews(currentNews)
-            }
-            
-            console.log('✅ Auto-sync update to WordPress successful')
-          } else {
-            console.log('⚠️ Auto-sync update to WordPress failed:', syncResult.error)
-          }
-        } else {
-          console.log('⚠️ Auto-sync update to WordPress failed:', syncResponse.status)
-        }
-      } else {
-        console.log('ℹ️ Auto-sync disabled, WordPress not connected, or news not synced before')
-      }
-    } catch (syncError) {
-      console.error('❌ Error during auto-sync update:', syncError)
-      // Không làm gián đoạn việc cập nhật tin tức nếu sync thất bại
-    }
-
-    return NextResponse.json({
-      success: true,
-      message: 'Tin tức đã được cập nhật thành công',
-      data: updatedNews
+    // Gọi plugin để cập nhật trực tiếp
+    const resp = await fetch(`${request.nextUrl.origin}/api/wordpress/update-via-plugin`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        wordpressId: id.startsWith('wp_') ? id.slice(3) : id,
+        ...body
+      }),
+      signal: AbortSignal.timeout(30000)
     })
+
+    const text = await resp.text()
+    let json: any
+    try { json = JSON.parse(text) } catch { json = null }
+    if (!resp.ok || !json?.success) {
+      return NextResponse.json({ error: json?.error || 'Không thể cập nhật tin tức', raw: text }, { status: resp.status || 502 })
+    }
+
+    return NextResponse.json({ success: true, message: 'Cập nhật thành công trên WordPress', data: json.data })
   } catch (error) {
     console.error('Error updating news:', error)
     return NextResponse.json(
@@ -433,144 +394,24 @@ export async function PATCH(
     const { id } = await params
     const body = await request.json()
     
-    const news = loadNews()
-    let newsIndex = news.findIndex(item => item.id === id)
-    
-    // Nếu không tìm thấy trong local, thử tìm trong WordPress
-    if (newsIndex === -1) {
-      console.log(`🔍 Không tìm thấy tin tức với ID "${id}" trong local, thử tìm trong WordPress...`)
-      
-      // Kiểm tra xem có phải WordPress ID không
-      const wordpressId = id.startsWith('wp_') ? id.substring(3) : id
-      
-      try {
-        const wordpressConfig = getWordPressConfig()
-        if (wordpressConfig && wordpressConfig.siteUrl) {
-          // Tìm tin tức từ WordPress
-          const wpResponse = await fetch(`${wordpressConfig.siteUrl}/wp-json/wp/v2/posts/${wordpressId}?_embed=1`, {
-            headers: {
-              'Authorization': `Basic ${Buffer.from(`${wordpressConfig.username}:${wordpressConfig.applicationPassword}`).toString('base64')}`
-            }
-          })
-          
-          if (wpResponse.ok) {
-            const wpPost = await wpResponse.json()
-            
-            // Chuyển đổi WordPress post thành NewsItem
-            const attachments = await fetchAttachments(wordpressConfig.siteUrl, wpPost.id, {
-              username: wordpressConfig.username,
-              password: wordpressConfig.applicationPassword
-            })
-            
-            const newsItem = mapWpPostToNewsItem(wpPost, attachments)
-            
-            // Thêm vào local news
-            news.push(newsItem)
-            saveNews(news)
-            
-            // Tìm lại index
-            newsIndex = news.findIndex(item => item.id === id)
-            console.log(`✅ Đã tìm thấy tin tức từ WordPress và thêm vào local`)
-          } else {
-            console.log(`❌ Không tìm thấy tin tức trong WordPress với ID ${wordpressId}`)
-          }
-        }
-      } catch (error) {
-        console.error('❌ Lỗi khi tìm tin tức từ WordPress:', error)
-      }
-    }
-    
-    if (newsIndex === -1) {
-      return NextResponse.json(
-        { error: 'Không tìm thấy tin tức' },
-        { status: 404 }
-      )
-    }
-
-    // Cập nhật một phần tin tức
-    const updatedNews = {
-      ...news[newsIndex],
-      ...body,
-      updatedAt: new Date().toISOString()
-    }
-
-    news[newsIndex] = updatedNews
-
-    // Lưu vào file
-    saveNews(news)
-
-    // Tự động đồng bộ lên WordPress nếu có cấu hình và tin tức đã được sync trước đó
-    try {
-      const wordpressConfig = getWordPressConfig()
-      if (wordpressConfig && wordpressConfig.siteUrl && updatedNews.wordpressId) {
-        console.log('🔄 Auto-syncing patched news to WordPress...')
-        
-        // Chuẩn bị dữ liệu để sync (chỉ những trường đã thay đổi)
-        const syncData: any = {
-          id: updatedNews.wordpressId // ID của bài viết trên WordPress
-        }
-
-        // Chỉ sync những trường đã thay đổi
-        if (body.title !== undefined) syncData.title = updatedNews.title
-        if (body.content !== undefined) syncData.content = updatedNews.content
-        if (body.excerpt !== undefined) syncData.excerpt = updatedNews.excerpt
-        if (body.status !== undefined) syncData.status = updatedNews.status === 'published' ? 'publish' : 'draft'
-        if (body.category !== undefined) syncData.categories = updatedNews.category ? [updatedNews.category] : []
-        if (body.tags !== undefined) syncData.tags = updatedNews.tags ? updatedNews.tags.split(',').map((tag: string) => tag.trim()) : []
-        if (body.metaTitle !== undefined || body.metaDescription !== undefined) {
-          syncData.meta = {
-            meta_title: updatedNews.metaTitle,
-            meta_description: updatedNews.metaDescription
-          }
-        }
-
-        // Chỉ sync nếu có thay đổi thực sự
-        if (Object.keys(syncData).length > 1) { // > 1 vì luôn có id
-          const syncResponse = await fetch(`${request.nextUrl.origin}/api/wordpress/sync-multi-method`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(syncData)
-          })
-
-          if (syncResponse.ok) {
-            const syncResult = await syncResponse.json()
-            if (syncResult.success) {
-              // Cập nhật trạng thái sync
-              updatedNews.lastSyncDate = new Date().toISOString()
-              
-              // Lưu lại với thông tin sync
-              const currentNews = loadNews()
-              const currentNewsIndex = currentNews.findIndex(item => item.id === id)
-              if (currentNewsIndex !== -1) {
-                currentNews[currentNewsIndex] = updatedNews
-                saveNews(currentNews)
-              }
-              
-              console.log('✅ Auto-sync patch to WordPress successful')
-            } else {
-              console.log('⚠️ Auto-sync patch to WordPress failed:', syncResult.error)
-            }
-          } else {
-            console.log('⚠️ Auto-sync patch to WordPress failed:', syncResponse.status)
-          }
-        } else {
-          console.log('ℹ️ No changes detected, skipping WordPress sync')
-        }
-      } else {
-        console.log('ℹ️ Auto-sync disabled, WordPress not connected, or news not synced before')
-      }
-    } catch (syncError) {
-      console.error('❌ Error during auto-sync patch:', syncError)
-      // Không làm gián đoạn việc cập nhật tin tức nếu sync thất bại
-    }
-
-    return NextResponse.json({
-      success: true,
-      message: 'Tin tức đã được cập nhật thành công',
-      data: updatedNews
+    const resp = await fetch(`${request.nextUrl.origin}/api/wordpress/update-via-plugin`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        wordpressId: id.startsWith('wp_') ? id.slice(3) : id,
+        ...body
+      }),
+      signal: AbortSignal.timeout(30000)
     })
+
+    const text = await resp.text()
+    let json: any
+    try { json = JSON.parse(text) } catch { json = null }
+    if (!resp.ok || !json?.success) {
+      return NextResponse.json({ error: json?.error || 'Không thể cập nhật tin tức', raw: text }, { status: resp.status || 502 })
+    }
+
+    return NextResponse.json({ success: true, message: 'Cập nhật thành công trên WordPress', data: json.data })
   } catch (error) {
     console.error('Error updating news:', error)
     return NextResponse.json(
@@ -585,11 +426,22 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
-  return NextResponse.json(
-    { 
-      error: 'Chức năng xóa tin tức đã bị vô hiệu hóa',
-      message: 'Không thể xóa tin tức để đảm bảo dữ liệu an toàn'
-    },
-    { status: 403 }
-  )
+  try {
+    const wpId = params.id.startsWith('wp_') ? params.id.slice(3) : params.id
+    const resp = await fetch(`${request.nextUrl.origin}/api/wordpress/delete-via-plugin?id=${encodeURIComponent(wpId)}`, {
+      method: 'DELETE',
+      signal: AbortSignal.timeout(20000)
+    })
+
+    const text = await resp.text()
+    let json: any
+    try { json = JSON.parse(text) } catch { json = null }
+    if (!resp.ok || !json?.success) {
+      return NextResponse.json({ error: json?.error || 'Không thể xóa tin tức', raw: text }, { status: resp.status || 502 })
+    }
+
+    return NextResponse.json({ success: true, message: 'Đã xóa bài viết trên WordPress', data: { id: Number(wpId) } })
+  } catch (error) {
+    return NextResponse.json({ error: 'Lỗi khi xóa tin tức' }, { status: 500 })
+  }
 } 
