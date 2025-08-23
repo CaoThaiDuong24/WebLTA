@@ -79,7 +79,25 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    const settings = settingsFromPlugin || loadSettings()
+    // Luôn đọc bản local trước
+    const localSettings = loadSettings()
+
+    // Nếu plugin trả về object rỗng hoặc không hợp lệ, ưu tiên local
+    let settings = localSettings
+    const hasValidPluginData = settingsFromPlugin && typeof settingsFromPlugin === 'object' && Object.keys(settingsFromPlugin).length > 0
+    if (hasValidPluginData) {
+      // Nếu cả hai có lastUpdated thì chọn bản mới hơn; đồng thời merge để không mất trường mới
+      const pluginLast = Date.parse(settingsFromPlugin.lastUpdated || '')
+      const localLast = Date.parse(localSettings.lastUpdated || '')
+      if (!Number.isNaN(pluginLast) && !Number.isNaN(localLast)) {
+        settings = pluginLast >= localLast
+          ? { ...localSettings, ...settingsFromPlugin }
+          : localSettings
+      } else {
+        // Nếu không có timestamp, merge plugin đè lên local (giữ trường local khi plugin thiếu)
+        settings = { ...localSettings, ...settingsFromPlugin }
+      }
+    }
     return NextResponse.json({ success: true, settings })
   } catch (error) {
     console.error('Error getting settings:', error)
