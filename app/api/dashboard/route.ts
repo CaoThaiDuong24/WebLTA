@@ -144,43 +144,76 @@ function getRecentNews(newsData: any[], limit: number = 5) {
       views: 0, // Mock data - có thể thêm tracking sau
       status: news.status,
       date: new Date(news.publishedAt || news.createdAt).toLocaleDateString('vi-VN'),
-      author: 'Admin LTA',
+      author: news.author || 'Admin LTA',
       category: news.category || 'Không phân loại'
     }))
 }
 
-// Lấy hoạt động gần đây (mock data)
-function getRecentActivities() {
-  return [
-    {
-      id: 1,
-      action: 'Đăng nhập hệ thống',
-      user: 'Admin LTA',
-      time: 'Vừa xong',
-      type: 'login'
-    },
-    {
-      id: 2,
-      action: 'Tạo tin tức mới',
-      user: 'Admin LTA',
-      time: 'Hôm nay',
-      type: 'create'
-    },
-    {
-      id: 3,
-      action: 'Cập nhật danh mục',
-      user: 'Admin LTA',
-      time: 'Hôm nay',
-      type: 'update'
-    },
-    {
-      id: 4,
-      action: 'Xóa tin tức test',
-      user: 'Admin LTA',
-      time: 'Hôm nay',
-      type: 'delete'
+// Định dạng thời gian tương đối (vi)
+function formatRelativeTime(dateStr?: string) {
+  if (!dateStr) return 'Không rõ thời gian'
+  const date = new Date(dateStr)
+  const now = new Date()
+  const diffMs = now.getTime() - date.getTime()
+
+  const minutes = Math.floor(diffMs / 60000)
+  if (minutes < 1) return 'Vừa xong'
+  if (minutes < 60) return `${minutes} phút trước`
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) return `${hours} giờ trước`
+  const days = Math.floor(hours / 24)
+  if (days < 7) return `${days} ngày trước`
+  return date.toLocaleDateString('vi-VN')
+}
+
+// Sinh hoạt động gần đây dựa trên dữ liệu bài viết WordPress
+function getRecentActivitiesFromNews(newsData: any[], limit: number = 6) {
+  const activities: Array<{ id: number; action: string; user: string; time: string; type: string }> = []
+
+  const sorted = [...newsData].sort((a, b) => {
+    const aTime = new Date(a.updatedAt || a.publishedAt || a.createdAt).getTime()
+    const bTime = new Date(b.updatedAt || b.publishedAt || b.createdAt).getTime()
+    return bTime - aTime
+  })
+
+  let idCounter = 1
+  for (const news of sorted) {
+    const authorName = news.author || 'Không rõ'
+
+    // Xuất bản
+    if (news.status === 'published' && news.publishedAt) {
+      activities.push({
+        id: idCounter++,
+        action: `Xuất bản: ${stripHtmlTags(news.title)}`,
+        user: authorName,
+        time: formatRelativeTime(news.publishedAt),
+        type: 'create'
+      })
     }
-  ]
+
+    // Cập nhật (khác thời điểm xuất bản)
+    const updatedMs = news.updatedAt ? new Date(news.updatedAt).getTime() : 0
+    const publishedMs = news.publishedAt ? new Date(news.publishedAt).getTime() : 0
+    if (updatedMs && (!publishedMs || Math.abs(updatedMs - publishedMs) > 60 * 1000)) {
+      activities.push({
+        id: idCounter++,
+        action: `Cập nhật: ${stripHtmlTags(news.title)}`,
+        user: authorName,
+        time: formatRelativeTime(news.updatedAt),
+        type: 'update'
+      })
+    }
+
+    if (activities.length >= limit) break
+  }
+
+  if (activities.length === 0) {
+    return [
+      { id: 1, action: 'Chưa có hoạt động nào gần đây', user: 'Hệ thống', time: '—', type: 'info' }
+    ]
+  }
+
+  return activities.slice(0, limit)
 }
 
 // Tính toán dữ liệu hiệu suất theo tháng
@@ -228,8 +261,8 @@ export async function GET(request: NextRequest) {
     // Lấy tin tức gần đây
     const recentNews = getRecentNews(newsData, 3)
     
-    // Lấy hoạt động gần đây
-    const recentActivities = getRecentActivities()
+    // Lấy hoạt động gần đây dựa trên dữ liệu WordPress
+    const recentActivities = getRecentActivitiesFromNews(newsData)
     
     // Lấy dữ liệu hiệu suất
     const performanceData = getPerformanceData(newsData)

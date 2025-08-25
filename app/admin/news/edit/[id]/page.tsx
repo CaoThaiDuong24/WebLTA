@@ -76,6 +76,18 @@ export default function EditNewsPage() {
   const [additionalImages, setAdditionalImages] = useState<File[]>([])
   const [additionalImagesPreview, setAdditionalImagesPreview] = useState<string[]>([])
   const [uploadingImages, setUploadingImages] = useState(false)
+  const [categories, setCategories] = useState<{ name: string; slug?: string }[]>([])
+  useEffect(() => {
+    const loadCats = async () => {
+      try {
+        const resp = await fetch('/api/categories', { method: 'GET' })
+        const data = await resp.json()
+        const list = (data?.categories || []).map((c: any) => ({ name: c.name, slug: c.slug }))
+        setCategories(list)
+      } catch {}
+    }
+    loadCats()
+  }, [])
   const [newsData, setNewsData] = useState<any>(null)
 
   const newsId = params.id as string
@@ -692,14 +704,14 @@ export default function EditNewsPage() {
                        <SelectValue placeholder="Chọn danh mục" />
                      </SelectTrigger>
                      <SelectContent>
-                       {categories.map((category) => (
-                         <SelectItem key={category} value={category}>
-                           {category}
-                         </SelectItem>
-                       ))}
-                     </SelectContent>
-                   </Select>
-                 </div>
+                       {categories.map((cat) => (
+                        <SelectItem key={cat.slug || cat.name} value={cat.slug || cat.name}>
+                          {cat.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
 
                 <div className="flex items-center space-x-2">
                   <Switch

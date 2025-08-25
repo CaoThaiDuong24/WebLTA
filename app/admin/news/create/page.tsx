@@ -79,14 +79,19 @@ export default function CreateNewsPage() {
   const [additionalImagesPreview, setAdditionalImagesPreview] = useState<string[]>([])
   const [uploadingImages, setUploadingImages] = useState(false)
 
-  // Danh sách danh mục
-  const categories = [
-    'Thông báo',
-    'Hướng dẫn', 
-    'Khuyến mãi',
-    'Cập nhật ứng dụng',
-    'Tin tức ngành'
-  ]
+  // Danh sách danh mục (tải từ API)
+  const [categories, setCategories] = useState<{ name: string; slug?: string }[]>([])
+  useEffect(() => {
+    const loadCats = async () => {
+      try {
+        const resp = await fetch('/api/categories', { method: 'GET' })
+        const data = await resp.json()
+        const list = (data?.categories || []).map((c: any) => ({ name: c.name, slug: c.slug }))
+        setCategories(list)
+      } catch {}
+    }
+    loadCats()
+  }, [])
 
   // Function tạo slug từ title
   const generateSlug = (title: string): string => {
@@ -615,9 +620,9 @@ export default function CreateNewsPage() {
                       <SelectValue placeholder="Chọn danh mục" />
                     </SelectTrigger>
                     <SelectContent>
-                      {categories.map((category) => (
-                        <SelectItem key={category} value={category}>
-                          {category}
+                      {categories.map((cat) => (
+                        <SelectItem key={cat.slug || cat.name} value={cat.slug || cat.name}>
+                          {cat.name}
                         </SelectItem>
                       ))}
                     </SelectContent>

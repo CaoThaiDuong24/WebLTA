@@ -26,8 +26,7 @@ import {
   AlertTriangle,
   Settings,
   Loader2,
-  Copy,
-  ExternalLink
+  
 } from 'lucide-react'
 import Link from 'next/link'
 import { useSettings, useMaintenanceMode } from '@/contexts/settings-context'
@@ -448,36 +447,7 @@ export default function AdminDashboardPage() {
         </CardContent>
       </Card>
 
-      {/* WordPress Sync Alert */}
-      <Card className="bg-gradient-to-br from-orange-50 to-orange-100 dark:from-orange-900/20 dark:to-orange-800/20 border-orange-200 dark:border-orange-800 hover:shadow-lg transition-shadow duration-300">
-        <CardContent className="p-6">
-          <div className="flex items-center space-x-4">
-            <div className="p-3 bg-orange-100 dark:bg-orange-900/30 rounded-lg">
-              <Copy className="w-8 h-8 text-orange-600 dark:text-orange-400" />
-            </div>
-            <div className="flex-1">
-              <h3 className="font-semibold text-orange-900 dark:text-orange-100">Đồng bộ WordPress</h3>
-              <p className="text-sm text-orange-700 dark:text-orange-300 mb-3">
-                Đồng bộ sử dụng plugin WordPress. REST API đã được loại bỏ.
-              </p>
-              <div className="flex gap-2">
-                <Link href="/admin/manual-wordpress-sync">
-                  <Button size="sm" className="bg-orange-600 hover:bg-orange-700 text-white">
-                    <Copy className="w-4 h-4 mr-2" />
-                    Đồng bộ thủ công
-                  </Button>
-                </Link>
-                <Link href="/admin/wordpress-sync-manager">
-                  <Button variant="outline" size="sm">
-                    <ExternalLink className="w-4 h-4 mr-2" />
-                    Quản lý WordPress
-                  </Button>
-                </Link>
-              </div>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+      
 
       {/* Quick Actions */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">

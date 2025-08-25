@@ -46,6 +46,11 @@ const menuItems = [
         exact: true
       },
       {
+        title: 'Danh mục tin tức',
+        href: '/admin/news-categories',
+        exact: true
+      },
+      {
         title: 'Thùng rác tin tức',
         href: '/admin/news/trash',
         exact: true
