@@ -52,8 +52,9 @@ export function middleware(request: NextRequest) {
     }
     
     // Nếu không có token nào, redirect về trang login
-    const base = process.env.NEXTAUTH_URL || 'http://localhost:3000'
-    const loginUrl = new URL('/admin/login', base)
+    // Luôn dựa vào origin của request hiện tại để tránh phụ thuộc vào NEXTAUTH_URL khi deploy
+    const origin = request.nextUrl.origin
+    const loginUrl = new URL('/admin/login', origin)
     // Giữ nguyên full URL cần quay về (trên base chuẩn)
     loginUrl.searchParams.set('callbackUrl', request.nextUrl.pathname + request.nextUrl.search)
     return NextResponse.redirect(loginUrl)

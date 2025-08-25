@@ -92,14 +92,7 @@ export default function EditNewsPage() {
 
   const newsId = params.id as string
 
-  // Danh sách danh mục
-  const categories = [
-    'Thông báo',
-    'Hướng dẫn', 
-    'Khuyến mãi',
-    'Cập nhật ứng dụng',
-    'Tin tức ngành'
-  ]
+  // Danh sách danh mục sẽ được load từ API vào state `categories`
 
   const {
     register,
