@@ -213,3 +213,99 @@ export async function getUploadConfig(): Promise<{
     }
   }
 }
+
+/**
+ * Chuyển đổi data URL thành File object
+ */
+export async function dataUrlToFile(dataUrl: string, filename: string = 'image.jpg'): Promise<File> {
+  try {
+    // Tách phần data từ data URL
+    const response = await fetch(dataUrl)
+    const blob = await response.blob()
+    
+    // Tạo File object từ blob
+    const file = new File([blob], filename, { type: blob.type })
+    return file
+  } catch (error) {
+    console.error('❌ Error converting data URL to file:', error)
+    throw new Error('Failed to convert data URL to file')
+  }
+}
+
+/**
+ * Chuyển đổi nhiều data URLs thành File objects
+ */
+export async function dataUrlsToFiles(dataUrls: string[], filenames?: string[]): Promise<File[]> {
+  try {
+    const files = await Promise.all(
+      dataUrls.map(async (dataUrl, index) => {
+        const filename = filenames?.[index] || `image-${index + 1}.jpg`
+        return await dataUrlToFile(dataUrl, filename)
+      })
+    )
+    return files
+  } catch (error) {
+    console.error('❌ Error converting data URLs to files:', error)
+    throw new Error('Failed to convert data URLs to files')
+  }
+}
+
+/**
+ * Tạo FormData từ news data với images
+ */
+export async function createNewsFormData(newsData: {
+  title: string
+  slug: string
+  excerpt: string
+  content: string
+  status: string
+  featured: boolean
+  category: string
+  metaTitle: string
+  metaDescription: string
+  featuredImage?: string
+  additionalImages?: string[]
+  author: string
+}): Promise<FormData> {
+  const formData = new FormData()
+  
+  // Thêm các trường text
+  formData.append('title', newsData.title)
+  formData.append('slug', newsData.slug)
+  formData.append('excerpt', newsData.excerpt)
+  formData.append('content', newsData.content)
+  formData.append('status', newsData.status)
+  formData.append('featured', newsData.featured.toString())
+  formData.append('category', newsData.category)
+  formData.append('metaTitle', newsData.metaTitle)
+  formData.append('metaDescription', newsData.metaDescription)
+  formData.append('author', newsData.author)
+  
+  // Thêm featured image nếu có
+  if (newsData.featuredImage) {
+    try {
+      const featuredFile = await dataUrlToFile(newsData.featuredImage, 'featured-image.jpg')
+      formData.append('featuredImage', featuredFile)
+    } catch (error) {
+      console.error('❌ Error converting featured image:', error)
+    }
+  }
+  
+  // Thêm additional images nếu có
+  if (newsData.additionalImages && newsData.additionalImages.length > 0) {
+    try {
+      const additionalFiles = await dataUrlsToFiles(
+        newsData.additionalImages,
+        newsData.additionalImages.map((_, index) => `additional-image-${index + 1}.jpg`)
+      )
+      
+      additionalFiles.forEach((file, index) => {
+        formData.append(`additionalImages`, file)
+      })
+    } catch (error) {
+      console.error('❌ Error converting additional images:', error)
+    }
+  }
+  
+  return formData
+}

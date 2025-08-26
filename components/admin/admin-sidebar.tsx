@@ -93,6 +93,12 @@ const menuItems = [
     href: '/admin/image-sync',
     icon: RefreshCw,
     exact: true
+  },
+  {
+    title: 'Test Multipart',
+    href: '/admin/test-multipart',
+    icon: Copy,
+    exact: true
   }
 ]
 

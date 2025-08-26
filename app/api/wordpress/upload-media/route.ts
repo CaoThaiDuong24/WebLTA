@@ -32,8 +32,8 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Kiểm tra kích thước file (giới hạn 50MB)
-    const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
+    // Kiểm tra kích thước file (giới hạn 1GB)
+    const MAX_FILE_SIZE = 1024 * 1024 * 1024; // 1GB
 
     console.log('🔍 WordPress config found:', {
       siteUrl: wordpressConfig.siteUrl,
@@ -64,7 +64,7 @@ export async function POST(request: NextRequest) {
     // Kiểm tra kích thước file
     if (file.size > MAX_FILE_SIZE) {
       return NextResponse.json(
-        { error: `File quá lớn. Kích thước tối đa cho phép: ${MAX_FILE_SIZE / (1024 * 1024)}MB` },
+        { error: `File quá lớn. Kích thước tối đa cho phép: ${MAX_FILE_SIZE / (1024 * 1024 / 1)}MB (${(MAX_FILE_SIZE / (1024 * 1024 * 1024)).toFixed(0)}GB)` },
         { status: 400 }
       )
     }

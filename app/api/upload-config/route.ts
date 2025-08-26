@@ -3,12 +3,12 @@ import { NextResponse } from 'next/server'
 export async function GET() {
   try {
     const config = {
-      maxFileSize: 50 * 1024 * 1024, // 50MB in bytes
-      maxFileSizeMB: 50,
+      maxFileSize: 1024 * 1024 * 1024, // 1GB in bytes
+      maxFileSizeMB: 1024,
       supportedFormats: ['image/jpeg', 'image/png', 'image/gif', 'image/webp'],
       supportedExtensions: ['.jpg', '.jpeg', '.png', '.gif', '.webp'],
-      maxDataUrlSize: 50 * 1024 * 1024, // 50MB for base64
-      bodyParserLimit: '50mb', // Next.js body parser limit
+      maxDataUrlSize: 1024 * 1024 * 1024, // 1GB for base64
+      bodyParserLimit: '1gb', // Next.js body parser limit
       features: {
         localStorage: true,
         wordpressUpload: true,
@@ -19,10 +19,10 @@ export async function GET() {
         progressiveUpload: true
       },
       limits: {
-        singleFile: '50MB',
-        totalUpload: '200MB', // Tổng kích thước cho multiple files
-        dataUrl: '50MB',
-        apiBody: '50MB'
+        singleFile: '1GB',
+        totalUpload: '4GB', // Tổng kích thước cho multiple files
+        dataUrl: '1GB',
+        apiBody: '1GB'
       },
       compression: {
         enabled: true,

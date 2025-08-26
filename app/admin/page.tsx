@@ -302,7 +302,7 @@ export default function AdminDashboardPage() {
             </div>
           </CardHeader>
           <CardContent className="space-y-4">
-            {dashboardData.recentNews.map((news, index) => (
+            {dashboardData.recentNews.slice(0, 3).map((news, index) => (
               <div 
                 key={news.id} 
                 className="flex items-center space-x-3 lg:space-x-4 p-3 lg:p-4 rounded-lg hover:bg-gray-50/50 dark:hover:bg-gray-800/50 transition-colors duration-200 animate-fade-in-up"
@@ -361,7 +361,7 @@ export default function AdminDashboardPage() {
             </div>
           </CardHeader>
           <CardContent className="space-y-4">
-            {dashboardData.recentActivities.map((activity, index) => (
+            {dashboardData.recentActivities.slice(0, 4).map((activity, index) => (
               <div 
                 key={activity.id} 
                 className="flex items-start space-x-3 p-3 rounded-lg hover:bg-gray-50/50 dark:hover:bg-gray-800/50 transition-colors duration-200 animate-fade-in-up"

@@ -24,7 +24,7 @@ export async function POST(request: NextRequest) {
     })
 
     // Kiểm tra kích thước file tối đa
-    const maxSize = 50 * 1024 * 1024 // 50MB
+    const maxSize = 1024 * 1024 * 1024 // 1GB
     if (file.size > maxSize) {
       return NextResponse.json(
         { 
@@ -111,7 +111,7 @@ export async function GET() {
     success: true,
     message: 'Upload with compression endpoint is ready',
     config: {
-      maxFileSize: '50MB',
+      maxFileSize: '1GB',
       compressionThreshold: '10MB',
       targetSizeAfterCompression: '10MB',
       supportedFormats: ['image/jpeg', 'image/png', 'image/gif', 'image/webp'],

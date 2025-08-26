@@ -179,12 +179,14 @@ function getRecentActivitiesFromNews(newsData: any[], limit: number = 6) {
   let idCounter = 1
   for (const news of sorted) {
     const authorName = news.author || 'Không rõ'
+    const title = stripHtmlTags(news.title)
+    const category = news.category ? ` — danh mục ${news.category}` : ''
 
     // Xuất bản
     if (news.status === 'published' && news.publishedAt) {
       activities.push({
         id: idCounter++,
-        action: `Xuất bản: ${stripHtmlTags(news.title)}`,
+        action: `Xuất bản bài viết: ${title}${category}`,
         user: authorName,
         time: formatRelativeTime(news.publishedAt),
         type: 'create'
@@ -197,7 +199,7 @@ function getRecentActivitiesFromNews(newsData: any[], limit: number = 6) {
     if (updatedMs && (!publishedMs || Math.abs(updatedMs - publishedMs) > 60 * 1000)) {
       activities.push({
         id: idCounter++,
-        action: `Cập nhật: ${stripHtmlTags(news.title)}`,
+        action: `Chỉnh sửa nội dung: ${title}${category}`,
         user: authorName,
         time: formatRelativeTime(news.updatedAt),
         type: 'update'
@@ -214,6 +216,82 @@ function getRecentActivitiesFromNews(newsData: any[], limit: number = 6) {
   }
 
   return activities.slice(0, limit)
+}
+
+// Tạo hoạt động hệ thống tổng hợp từ các tệp cấu hình/thay đổi gần nhất
+function getRecentSystemActivities(limit: number = 6) {
+  const items: Array<{ id: number; action: string; user: string; time: string; type: string; mtime: number }> = []
+
+  const pushIfExists = (filePath: string, make: (mtime: Date) => { action: string; type: string; user?: string }) => {
+    try {
+      if (fs.existsSync(filePath)) {
+        const stat = fs.statSync(filePath)
+        const meta = make(stat.mtime)
+        items.push({
+          id: items.length + 1,
+          action: meta.action,
+          user: meta.user || 'Hệ thống',
+          time: formatRelativeTime(stat.mtime.toISOString()),
+          type: meta.type,
+          mtime: stat.mtime.getTime()
+        })
+      }
+    } catch {}
+  }
+
+  // Các nguồn hoạt động
+  pushIfExists(path.join(process.cwd(), 'data', 'settings.json'), (mtime) => ({
+    action: 'Cập nhật cài đặt hệ thống',
+    type: 'update'
+  }))
+  pushIfExists(path.join(process.cwd(), 'data', 'wordpress-config.json'), (mtime) => ({
+    action: 'Cập nhật kết nối WordPress',
+    type: 'update'
+  }))
+  pushIfExists(path.join(process.cwd(), 'data', 'plugin-config.json'), (mtime) => ({
+    action: 'Cập nhật cấu hình plugin đồng bộ',
+    type: 'update'
+  }))
+  pushIfExists(path.join(process.cwd(), 'data', 'users.json'), (mtime) => ({
+    action: 'Thay đổi danh sách người dùng',
+    type: 'update'
+  }))
+
+  // Lấy bản sao lưu gần nhất
+  try {
+    const backupDir = path.join(process.cwd(), 'data', 'backup')
+    if (fs.existsSync(backupDir)) {
+      const files = fs.readdirSync(backupDir)
+      const jsonBackups = files.filter(f => f.endsWith('.json') || f.endsWith('.json.backup') || f.includes('.json.backup-'))
+      const withTimes = jsonBackups.map(f => {
+        const full = path.join(backupDir, f)
+        const st = fs.statSync(full)
+        return { f, full, time: st.mtime.getTime(), mtime: st.mtime }
+      }).sort((a, b) => b.time - a.time)
+      if (withTimes[0]) {
+        items.push({
+          id: items.length + 1,
+          action: 'Tạo bản sao lưu cấu hình',
+          user: 'Hệ thống',
+          time: formatRelativeTime(withTimes[0].mtime.toISOString()),
+          type: 'backup',
+          mtime: withTimes[0].time
+        })
+      }
+    }
+  } catch {}
+
+  // Nếu không có gì, trả về thông báo mặc định
+  if (items.length === 0) {
+    return [
+      { id: 1, action: 'Chưa có hoạt động nào gần đây', user: 'Hệ thống', time: '—', type: 'info' }
+    ]
+  }
+
+  return items
+    .sort((a, b) => b.mtime - a.mtime)
+    .slice(0, limit)
+    .map(({ mtime, ...rest }) => rest)
 }
 
 // Tính toán dữ liệu hiệu suất theo tháng
@@ -261,8 +339,8 @@ export async function GET(request: NextRequest) {
     // Lấy tin tức gần đây
     const recentNews = getRecentNews(newsData, 3)
     
-    // Lấy hoạt động gần đây dựa trên dữ liệu WordPress
-    const recentActivities = getRecentActivitiesFromNews(newsData)
+    // Lấy hoạt động gần đây từ hệ thống (không dựa vào tin tức)
+    const recentActivities = getRecentSystemActivities(4)
     
     // Lấy dữ liệu hiệu suất
     const performanceData = getPerformanceData(newsData)

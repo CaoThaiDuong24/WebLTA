@@ -141,10 +141,68 @@ export async function GET(request: NextRequest) {
   }
 }
 
+/**
+ * Xử lý multipart/form-data cho tin tức
+ */
+async function handleMultipartFormData(request: NextRequest) {
+  const formData = await request.formData()
+  
+  const body: any = {
+    title: formData.get('title') as string,
+    slug: formData.get('slug') as string,
+    excerpt: formData.get('excerpt') as string,
+    content: formData.get('content') as string,
+    status: formData.get('status') as string,
+    featured: formData.get('featured') === 'true',
+    category: formData.get('category') as string,
+    metaTitle: formData.get('metaTitle') as string,
+    metaDescription: formData.get('metaDescription') as string,
+    author: formData.get('author') as string,
+    featuredImage: '', // Sẽ xử lý riêng cho file
+    additionalImages: [] // Sẽ xử lý riêng cho files
+  }
+  
+  // Xử lý featured image
+  const featuredImageFile = formData.get('featuredImage') as File
+  if (featuredImageFile && featuredImageFile.size > 0) {
+    const arrayBuffer = await featuredImageFile.arrayBuffer()
+    const base64 = Buffer.from(arrayBuffer).toString('base64')
+    const mimeType = featuredImageFile.type || 'image/jpeg'
+    body.featuredImage = `data:${mimeType};base64,${base64}`
+  }
+  
+  // Xử lý additional images
+  const additionalImageFiles = formData.getAll('additionalImages') as File[]
+  const additionalImages: string[] = []
+  
+  for (const file of additionalImageFiles) {
+    if (file && file.size > 0) {
+      const arrayBuffer = await file.arrayBuffer()
+      const base64 = Buffer.from(arrayBuffer).toString('base64')
+      const mimeType = file.type || 'image/jpeg'
+      additionalImages.push(`data:${mimeType};base64,${base64}`)
+    }
+  }
+  
+  body.additionalImages = additionalImages
+  return body
+}
+
 export async function POST(request: NextRequest) {
   try {
     console.log('POST /api/news - Tạo tin tức mới')
-    const body = await request.json()
+    
+    // Kiểm tra content type để xử lý multipart/form-data hoặc JSON
+    const contentType = request.headers.get('content-type') || ''
+    let body: any
+    
+    if (contentType.includes('multipart/form-data')) {
+      console.log('📁 Processing multipart/form-data...')
+      body = await handleMultipartFormData(request)
+    } else {
+      console.log('📄 Processing JSON data...')
+      body = await request.json()
+    }
 
     // Validate required fields
     if (!body.title || !body.excerpt || !body.content) {
@@ -164,7 +222,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Prepare images
-    const MAX_IMAGE_SIZE = 50 * 1024 * 1024
+    const MAX_IMAGE_SIZE = 1024 * 1024 * 1024
 
     let featuredImage = body.featuredImage || ''
     if (featuredImage && typeof featuredImage === 'string' && featuredImage.startsWith('data:') && featuredImage.length > MAX_IMAGE_SIZE) {
@@ -207,7 +265,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Retry logic cho publish via plugin
-    let resp: Response
+    let resp: Response | undefined
     let lastError: any = null
     
     for (let attempt = 1; attempt <= 2; attempt++) {
@@ -226,7 +284,7 @@ export async function POST(request: NextRequest) {
         
       } catch (error) {
         lastError = error
-        console.log(`❌ Attempt ${attempt} failed:`, error.message)
+        console.log(`❌ Attempt ${attempt} failed:`, (error as Error).message)
         
         if (attempt < 2) {
           // Chờ 3 giây trước khi thử lại

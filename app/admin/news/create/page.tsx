@@ -35,7 +35,7 @@ import {
   fileToDataUrl,
   processImageIfNeeded
 } from '@/lib/image-utils'
-import { fileToDataUrlWithCompression, validateFile } from '@/lib/upload-utils'
+import { fileToDataUrlWithCompression, validateFile, createNewsFormData } from '@/lib/upload-utils'
 import { QuillEditor } from '@/components/ui/quill-editor'
 import { useSession } from 'next-auth/react'
 
@@ -347,13 +347,16 @@ export default function CreateNewsPage() {
         author: (session?.user?.name as string) || (session?.user?.email as string) || 'Admin'
       }
       
+      // Chuyển đổi thành FormData với multipart/form-data
+      console.log('🔄 Converting to FormData...')
+      const formData = await createNewsFormData(localNewsData)
+      
       const localResponse = await fetch('/api/news', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
           'X-Request-Source': 'admin-panel',
         },
-        body: JSON.stringify(localNewsData),
+        body: formData,
       })
 
       let localResult: any = null

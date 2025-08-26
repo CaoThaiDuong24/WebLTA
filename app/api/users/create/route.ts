@@ -22,6 +22,7 @@ export async function POST(request: NextRequest) {
   
   try {
     console.log('🔄 Creating new user...')
+    const isReadOnlyFs = !!(process.env.VERCEL || process.env.NETLIFY || process.env.AWS_REGION || process.env.AWS_EXECUTION_ENV)
     
     let username: string, email: string, password: string, name: string, role: string, avatarFile: any = null
     
@@ -77,22 +78,7 @@ export async function POST(request: NextRequest) {
       )
     }
     
-    // Load existing users
-    const usersFile = path.join(process.cwd(), 'data', 'users.json')
-    let users = []
-    
-    if (fs.existsSync(usersFile)) {
-      const usersData = fs.readFileSync(usersFile, 'utf8')
-      users = JSON.parse(usersData)
-    }
-    
-    // Check for duplicates
-    if (users.some((u: any) => u.user_login === validUsername)) {
-      return NextResponse.json({ error: 'Username đã tồn tại' }, { status: 409 })
-    }
-    if (users.some((u: any) => u.user_email === email)) {
-      return NextResponse.json({ error: 'Email đã tồn tại' }, { status: 409 })
-    }
+    // Không dùng local users.json nữa
     
     // Kiểm tra trùng lặp trên WordPress trước
     try {
@@ -132,23 +118,30 @@ export async function POST(request: NextRequest) {
       console.log('Failed to check existing users:', e)
     }
     
-    // Lưu avatar nếu có
+    // Lưu avatar: upload trực tiếp lên WordPress Media để lấy URL (không lưu local)
     let avatarUrl = null
+    let avatarMediaId: number | null = null
     if (avatarFile && avatarFile instanceof File) {
-      const uploadsDir = path.join(process.cwd(), 'public', 'uploads', 'avatars')
-      if (!fs.existsSync(uploadsDir)) {
-        fs.mkdirSync(uploadsDir, { recursive: true })
+      try {
+        const form = new FormData()
+        form.append('file', avatarFile)
+        const uploadResp = await fetch(`${request.nextUrl.origin}/api/wordpress/upload-media`, {
+          method: 'POST',
+          body: form
+        })
+        if (uploadResp.ok) {
+          const uploadData = await uploadResp.json()
+          if (uploadData?.success && uploadData.data) {
+            avatarUrl = uploadData.data.source_url || null
+            avatarMediaId = uploadData.data.id || null
+          }
+        } else {
+          const errText = await uploadResp.text()
+          console.warn('Avatar upload to WordPress failed:', errText)
+        }
+      } catch (e) {
+        console.warn('Avatar upload error:', e)
       }
-      
-      const fileExtension = path.extname(avatarFile.name)
-      const fileName = `avatar_${Date.now()}${fileExtension}`
-      const filePath = path.join(uploadsDir, fileName)
-      
-      const bytes = await avatarFile.arrayBuffer()
-      const buffer = Buffer.from(bytes)
-      fs.writeFileSync(filePath, buffer)
-      
-      avatarUrl = `/uploads/avatars/${fileName}`
     }
     
     // Tạo thời gian theo múi giờ Việt Nam (UTC+7)
@@ -175,15 +168,15 @@ export async function POST(request: NextRequest) {
       role: role,
       user_registered: userRegistered,
       avatar_url: avatarUrl,
-      wordpress_avatar_url: null,
-      avatar_media_id: null,
+      wordpress_avatar_url: avatarUrl,
+      avatar_media_id: avatarMediaId,
       is_active: true,
       created_at: createdAt,
       security_version: "2.0" // Updated security version
     }
     
     // Chỉ sử dụng plugin REST API (nhanh nhất)
-    let createdIn: 'plugin' | 'file' = 'file'
+    let createdIn: 'plugin' | 'file' = 'plugin'
     let wordpressUserId: number | null = null
     
     try {
@@ -214,27 +207,20 @@ export async function POST(request: NextRequest) {
             wordpressUserId = data.userId || data.id || null
             console.log('✅ User created via plugin:', wordpressUserId)
           }
+        } else {
+          const errText = await resp.text()
+          return NextResponse.json({ error: 'Không thể tạo user trên WordPress (plugin)', details: errText }, { status: resp.status })
         }
       }
     } catch (error) {
       console.log('❌ Failed to create user via plugin:', error)
+      return NextResponse.json({ error: 'Không thể tạo user trên WordPress (plugin)', details: error instanceof Error ? error.message : String(error) }, { status: 502 })
     }
     
     // Add WordPress user ID if created successfully
     if (wordpressUserId) {
       newUser.wordpress_user_id = wordpressUserId
     }
-    
-    // Add to local users array
-    users.push(newUser)
-    
-    // Save to file
-    const dataDir = path.dirname(usersFile)
-    if (!fs.existsSync(dataDir)) {
-      fs.mkdirSync(dataDir, { recursive: true })
-    }
-    
-    fs.writeFileSync(usersFile, JSON.stringify(users, null, 2))
     
     console.log('✅ User created successfully:', {
       id: newUser.id,

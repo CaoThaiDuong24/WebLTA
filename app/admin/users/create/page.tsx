@@ -25,6 +25,7 @@ export default function CreateUserPage() {
   const [avatar, setAvatar] = useState<File | null>(null)
   const [avatarPreview, setAvatarPreview] = useState<string>('')
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const previousObjectUrlRef = useRef<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [successMessage, setSuccessMessage] = useState<string | null>(null)
 
@@ -54,12 +55,13 @@ export default function CreateUserPage() {
       setAvatar(file)
       setError(null)
 
-      // Tạo preview
-      const reader = new FileReader()
-      reader.onload = (e) => {
-        setAvatarPreview(e.target?.result as string)
+      // Tạo preview bằng Object URL (ổn định và nhanh hơn)
+      if (previousObjectUrlRef.current) {
+        try { URL.revokeObjectURL(previousObjectUrlRef.current) } catch {}
       }
-      reader.readAsDataURL(file)
+      const objectUrl = URL.createObjectURL(file)
+      previousObjectUrlRef.current = objectUrl
+      setAvatarPreview(objectUrl)
     }
   }
 
@@ -86,6 +88,10 @@ export default function CreateUserPage() {
   const removeAvatar = () => {
     setAvatar(null)
     setAvatarPreview('')
+    if (previousObjectUrlRef.current) {
+      try { URL.revokeObjectURL(previousObjectUrlRef.current) } catch {}
+      previousObjectUrlRef.current = null
+    }
     if (fileInputRef.current) {
       fileInputRef.current.value = ''
     }
