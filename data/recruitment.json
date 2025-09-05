@@ -1,0 +1,121 @@
+[
+  {
+    "id": "recruitment-1",
+    "title": "Tuyển dụng Nhân viên Marketing Digital",
+    "position": "Nhân viên Marketing Digital",
+    "location": "Hà Nội",
+    "salary": "15-25 triệu VNĐ",
+    "type": "full-time",
+    "status": "active",
+    "description": "Chúng tôi đang tìm kiếm một Nhân viên Marketing Digital có kinh nghiệm để tham gia vào đội ngũ marketing của công ty. Bạn sẽ chịu trách nhiệm phát triển và thực hiện các chiến dịch marketing digital, quản lý mạng xã hội, và tối ưu hóa hiệu suất marketing.",
+    "requirements": [
+      "Tốt nghiệp Đại học chuyên ngành Marketing, Truyền thông hoặc lĩnh vực liên quan",
+      "Có ít nhất 2-3 năm kinh nghiệm trong lĩnh vực Marketing Digital",
+      "Thành thạo các công cụ marketing digital như Google Ads, Facebook Ads, Google Analytics",
+      "Có khả năng phân tích dữ liệu và báo cáo hiệu suất",
+      "Kỹ năng giao tiếp tốt, làm việc nhóm hiệu quả",
+      "Có tư duy sáng tạo và khả năng thích ứng nhanh"
+    ],
+    "benefits": [
+      "Mức lương cạnh tranh theo năng lực",
+      "Bảo hiểm xã hội, bảo hiểm y tế đầy đủ",
+      "Môi trường làm việc trẻ trung, năng động",
+      "Cơ hội thăng tiến rõ ràng",
+      "Được đào tạo và phát triển kỹ năng liên tục",
+      "Thưởng dự án và thưởng cuối năm"
+    ],
+    "experience": "2-3 năm kinh nghiệm",
+    "education": "Đại học trở lên",
+    "deadline": "2024-12-31T23:59:59.000Z",
+    "createdAt": "2024-01-15T08:00:00.000Z",
+    "updatedAt": "2024-01-15T08:00:00.000Z"
+  },
+  {
+    "id": "recruitment-2",
+    "title": "Tuyển dụng Lập trình viên Frontend React",
+    "position": "Lập trình viên Frontend React",
+    "location": "TP.HCM",
+    "salary": "20-35 triệu VNĐ",
+    "type": "full-time",
+    "status": "active",
+    "description": "Chúng tôi đang tìm kiếm một Lập trình viên Frontend có kinh nghiệm với React để tham gia phát triển các ứng dụng web hiện đại. Bạn sẽ làm việc trong môi trường agile, tham gia vào các dự án lớn và có cơ hội học hỏi công nghệ mới.",
+    "requirements": [
+      "Tốt nghiệp Đại học chuyên ngành Công nghệ thông tin hoặc lĩnh vực liên quan",
+      "Có ít nhất 3-5 năm kinh nghiệm phát triển Frontend",
+      "Thành thạo React, JavaScript/TypeScript, HTML, CSS",
+      "Có kinh nghiệm với Redux, React Router, và các thư viện liên quan",
+      "Hiểu biết về responsive design và cross-browser compatibility",
+      "Có kinh nghiệm làm việc với RESTful APIs",
+      "Thành thạo Git và các công cụ quản lý mã nguồn"
+    ],
+    "benefits": [
+      "Mức lương cạnh tranh và thưởng dự án",
+      "Bảo hiểm xã hội, bảo hiểm y tế, bảo hiểm thất nghiệp",
+      "Môi trường làm việc chuyên nghiệp, hiện đại",
+      "Cơ hội học hỏi công nghệ mới và tham gia các khóa đào tạo",
+      "Làm việc từ xa linh hoạt",
+      "Thưởng cuối năm và các chế độ đãi ngộ khác"
+    ],
+    "experience": "3-5 năm kinh nghiệm",
+    "education": "Đại học trở lên",
+    "deadline": "2024-11-30T23:59:59.000Z",
+    "createdAt": "2024-01-10T10:30:00.000Z",
+    "updatedAt": "2024-01-10T10:30:00.000Z"
+  },
+  {
+    "id": "recruitment-3",
+    "title": "Tuyển dụng Thực tập sinh Marketing",
+    "position": "Thực tập sinh Marketing",
+    "location": "Hà Nội",
+    "salary": "3-5 triệu VNĐ",
+    "type": "internship",
+    "status": "active",
+    "description": "Chúng tôi đang tìm kiếm các bạn sinh viên năm cuối hoặc mới tốt nghiệp có đam mê với marketing để tham gia chương trình thực tập. Đây là cơ hội tuyệt vời để học hỏi và tích lũy kinh nghiệm thực tế trong môi trường doanh nghiệp.",
+    "requirements": [
+      "Sinh viên năm cuối hoặc mới tốt nghiệp chuyên ngành Marketing, Kinh doanh, Truyền thông",
+      "Có kiến thức cơ bản về marketing và truyền thông",
+      "Thành thạo Microsoft Office, đặc biệt là Excel và PowerPoint",
+      "Có khả năng giao tiếp tốt, làm việc nhóm",
+      "Có tư duy sáng tạo và ham học hỏi",
+      "Có thể làm việc toàn thời gian trong thời gian thực tập"
+    ],
+    "benefits": [
+      "Mức lương thực tập cạnh tranh",
+      "Được đào tạo và hướng dẫn bởi các chuyên gia có kinh nghiệm",
+      "Cơ hội được nhận vào làm chính thức sau khi thực tập",
+      "Môi trường làm việc trẻ trung, năng động",
+      "Được tham gia các dự án thực tế",
+      "Chứng chỉ thực tập có giá trị"
+    ],
+    "experience": "Không yêu cầu kinh nghiệm",
+    "education": "Sinh viên năm cuối hoặc mới tốt nghiệp",
+    "deadline": "2024-06-30T23:59:59.000Z",
+    "createdAt": "2024-01-05T14:15:00.000Z",
+    "updatedAt": "2024-01-05T14:15:00.000Z"
+  },
+  {
+    "id": "mf3mum24vqbnfo7t65",
+    "title": "Kỹ sư Phát triển Sản phẩm (AI-Powered Full-Cycle Engineer)",
+    "position": "Kỹ sư Phát triển Sản phẩm",
+    "location": "Hồ Chi Minh",
+    "salary": "20-30 triệu",
+    "type": "full-time",
+    "status": "active",
+    "description": "Chúng tôi không tìm kiếm một lập trình viên Fullstack hay một BA đơn thuần. Chúng tôi tìm kiếm một Nhà Kiến tạo Sản phẩm. Một người có khả năng đi cùng một ý tưởng từ những phác thảo ban đầu, qua các giai đoạn phân tích, thiết kế, lập trình, kiểm thử, triển khai và vận hành.\nỞ vai trò này, bạn sẽ được trao quyền tối đa và được trang bị những công cụ AI LLM mạnh mẽ nhất (GitHub Copilot, Cursor, ChatGPT-4, Midjourney...) như một \"người đồng đội\" đắc lực. Mục tiêu của chúng tôi là để một kỹ sư tài năng có thể đạt được hiệu suất của một nhóm nhỏ, tập trung vào việc giải quyết vấn đề và tạo ra giá trị thay vì các công việc lặp đi lặp lại.",
+    "requirements": [
+      "○\tLàm việc trực tiếp với các bên liên quan (ban lãnh đạo, khách hàng, đối tác) để thu thập, phân tích và làm rõ các yêu cầu nghiệp vụ.",
+      "○\tNghiên cứu thị trường, đối thủ và đề xuất các giải pháp công nghệ phù hợp với bài toán logistics",
+      "○\tThiết kế kiến trúc hệ thống, cơ sở dữ liệu và luồng xử lý dữ liệu (data flow)."
+    ],
+    "benefits": [
+      "○\tTrực tiếp lập trình Front-end, xây dựng giao diện người dùng (UI) trực quan, đáp ứng (responsive) và mang lại trải nghiệm xuất sắc (UX).",
+      "○\tPhát triển Back-end, xây dựng các API mạnh mẽ, an toàn và có khả năng mở rộng.",
+      "○\tTích hợp các dịch vụ của bên thứ ba và các hệ thống nội bộ."
+    ],
+    "experience": "3",
+    "education": "Đại học",
+    "deadline": null,
+    "createdAt": "2025-09-03T07:05:23.500Z",
+    "updatedAt": "2025-09-03T07:05:23.500Z"
+  }
+]

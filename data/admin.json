@@ -1,0 +1,10 @@
+{
+  "email": "ENCRYPTED:iDkvl5qnZagc+5UULQYUgQ9mPryU",
+  "password": "ENCRYPTED:GyZ5O35gPGtZrZlZcnZczFwBBYa3SJdbzxcaoPBsILlvn32ixtiyrBLamU4RKUGZAgty/ZZf01D0FUaayTwVhw2fNJI=",
+  "name": "ENCRYPTED:dp1vANyG5I8xy7ldAiIVnAA=",
+  "role": "administrator",
+  "created_at": "2024-01-01T00:00:00.000Z",
+  "updated_at": "2024-01-01T00:00:00.000Z",
+  "security_version": "2.0",
+  "encryption_enabled": true
+}

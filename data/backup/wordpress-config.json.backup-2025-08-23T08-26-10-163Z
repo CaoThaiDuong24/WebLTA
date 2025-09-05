@@ -1,0 +1,19 @@
+{
+  "siteUrl": "https://wp2.ltacv.com",
+  "username": "ENCRYPTED:qbT0nY00YiYe/pdQNy4ZnEMsKLyXXw==",
+  "applicationPassword": "ENCRYPTED:UlPBi4zoRAAR78lOYykhswhoOKqAcdxlxnYez+IzL5cCnWGqlA==",
+  "db": {
+    "port": 3306,
+    "tablePrefix": "wp_"
+  },
+  "autoPublish": true,
+  "defaultCategory": "",
+  "defaultTags": [],
+  "featuredImageEnabled": true,
+  "excerptLength": 150,
+  "status": "draft",
+  "isConnected": true,
+  "lastUpdated": "2025-08-23T08:22:38.976Z",
+  "updatedAt": "2025-08-23T08:22:38.977Z",
+  "createdAt": "2025-08-23T08:22:38.977Z"
+}
